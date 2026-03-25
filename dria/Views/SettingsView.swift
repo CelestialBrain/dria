@@ -604,7 +604,7 @@ private struct ShortcutRow: View {
 
 private struct GeneralSettingsTab: View {
     @Environment(AppState.self) private var appState
-    @State private var updateChecker = UpdateChecker()
+    // uses appState.updateChecker
     @State private var hotkeyConfig = HotkeyConfig.load()
     @State private var initialConfig = HotkeyConfig.load()
 
@@ -625,14 +625,39 @@ private struct GeneralSettingsTab: View {
                     Text("DRIA")
                         .font(.headline)
                     Spacer()
-                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
+                    Text("v\(appState.updateChecker.currentVersion)")
                         .foregroundStyle(.secondary)
                         .font(.caption.monospacedDigit())
                 }
-                Button("Check for Updates") {
-                    updateChecker.checkForUpdates()
+
+                if appState.updateChecker.updateAvailable {
+                    HStack {
+                        Label("v\(appState.updateChecker.latestVersion) available", systemImage: "arrow.down.circle.fill")
+                            .foregroundStyle(.blue)
+                            .font(.caption)
+                        Spacer()
+                        Button("Download") {
+                            appState.updateChecker.downloadUpdate()
+                        }
+                        .controlSize(.small)
+                    }
                 }
-                .disabled(!updateChecker.canCheckForUpdates)
+
+                HStack {
+                    Button("Check for Updates") {
+                        appState.updateChecker.checkForUpdates()
+                    }
+                    .disabled(appState.updateChecker.isChecking)
+
+                    if appState.updateChecker.isChecking {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+
+                Toggle("Launch at login", isOn: Binding(
+                    get: { appState.updateChecker.launchAtLogin },
+                    set: { appState.updateChecker.launchAtLogin = $0 }
+                ))
             }
 
             Section("Capture Workflow") {

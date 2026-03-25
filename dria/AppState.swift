@@ -104,6 +104,7 @@ final class AppState {
     let ocr = OCRService()
     let hotkey = HotkeyService()
     let focusDetector = FocusDetector()
+    let updateChecker = UpdateChecker()
     private var knowledgeBase: KnowledgeBaseService?
     private var geminiService: GeminiService?
     private var knowledgeBaseTask: Task<Void, Never>?

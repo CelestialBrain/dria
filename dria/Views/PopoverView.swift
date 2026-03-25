@@ -78,6 +78,26 @@ struct PopoverView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
 
+            // Update banner
+            if appState.updateChecker.updateAvailable {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(.blue)
+                    Text("v\(appState.updateChecker.latestVersion) available")
+                        .font(.caption)
+                    Spacer()
+                    Button("Update") {
+                        appState.updateChecker.downloadUpdate()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.blue.opacity(0.1))
+            }
+
             Divider()
 
             // Chat area
