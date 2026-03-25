@@ -129,11 +129,37 @@ final class AppState {
         set { UserDefaults.standard.set(newValue, forKey: "claudeApiKey"); geminiService = nil }
     }
 
+    /// OpenAI-compatible provider API key
+    var openAIApiKey: String {
+        get { UserDefaults.standard.string(forKey: "openAIApiKey") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "openAIApiKey"); geminiService = nil }
+    }
+
+    /// OpenAI-compatible base URL
+    var openAIBaseURL: String {
+        get { UserDefaults.standard.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
+        set { UserDefaults.standard.set(newValue, forKey: "openAIBaseURL"); geminiService = nil }
+    }
+
+    /// OpenAI-compatible provider name (for display)
+    var openAIProviderName: String {
+        get { UserDefaults.standard.string(forKey: "openAIProviderName") ?? "OpenAI" }
+        set { UserDefaults.standard.set(newValue, forKey: "openAIProviderName") }
+    }
+
     var availableModels: [String] {
-        if aiProvider == "claude" {
+        switch aiProvider {
+        case "claude":
             return ["claude-sonnet-4-20250514", "claude-haiku-4-20250414"]
+        case "openai-compatible":
+            // Try to find preset models
+            if let preset = OpenAICompatibleProvider.presets.first(where: { openAIBaseURL.contains($0.baseURL) || openAIProviderName == $0.name }) {
+                return preset.models
+            }
+            return [selectedModel] // user's custom model
+        default:
+            return ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-3-flash-preview"]
         }
-        return ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-3-flash-preview"]
     }
 
     var serviceAccountKeyPath: String {
@@ -169,10 +195,9 @@ final class AppState {
     }
 
     func syncModelToProvider() {
-        if aiProvider == "claude" && !selectedModel.hasPrefix("claude-") {
-            selectedModel = "claude-sonnet-4-20250514"
-        } else if aiProvider != "claude" && selectedModel.hasPrefix("claude-") {
-            selectedModel = "gemini-2.5-flash"
+        let models = availableModels
+        if !models.contains(selectedModel), let first = models.first {
+            selectedModel = first
         }
     }
 
@@ -438,6 +463,18 @@ final class AppState {
                 return nil
             }
             geminiService = GeminiService(claudeApiKey: key, modelName: selectedModel, modeId: activeModeId, systemPrompt: prompt)
+            return geminiService
+        } else if aiProvider == "openai-compatible" {
+            let key = openAIApiKey
+            let base = openAIBaseURL
+            guard !key.isEmpty || base.contains("localhost") else {
+                errorMessage = "No API key set for \(openAIProviderName). Go to Settings → AI Model."
+                return nil
+            }
+            geminiService = GeminiService(
+                openAIKey: key, baseURL: base, modelName: selectedModel,
+                providerName: openAIProviderName, modeId: activeModeId, systemPrompt: prompt
+            )
             return geminiService
         } else {
             // Google AI API key

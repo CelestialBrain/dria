@@ -404,6 +404,115 @@ final class ClaudeProvider: Sendable {
     }
 }
 
+// MARK: - OpenAI-Compatible Provider (OpenAI, Groq, Mistral, Ollama, OpenRouter, xAI)
+
+final class OpenAICompatibleProvider: Sendable {
+    let modelName: String
+    let providerName: String
+    private let apiKey: String
+    private let baseURL: String
+
+    /// Known provider presets
+    static let presets: [(id: String, name: String, baseURL: String, defaultModel: String, models: [String])] = [
+        ("openai", "OpenAI", "https://api.openai.com/v1", "gpt-4o",
+         ["gpt-4o", "gpt-4o-mini", "o1", "o1-mini", "gpt-4-turbo"]),
+        ("groq", "Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile",
+         ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]),
+        ("mistral", "Mistral", "https://api.mistral.ai/v1", "mistral-large-latest",
+         ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "open-mixtral-8x22b"]),
+        ("ollama", "Ollama (Local)", "http://localhost:11434/v1", "llama3.2",
+         ["llama3.2", "llama3.1", "mistral", "codellama", "phi3", "gemma2"]),
+        ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "google/gemini-2.5-flash",
+         ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4", "openai/gpt-4o", "meta-llama/llama-3.3-70b-instruct"]),
+        ("xai", "xAI (Grok)", "https://api.x.ai/v1", "grok-3",
+         ["grok-3", "grok-3-mini", "grok-2"]),
+    ]
+
+    init(apiKey: String, baseURL: String, modelName: String, providerName: String = "OpenAI") {
+        self.apiKey = apiKey
+        self.baseURL = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
+        self.modelName = modelName
+        self.providerName = providerName
+    }
+
+    func generate(systemPrompt: String, userContent: String, imageData: Data? = nil) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard let url = URL(string: "\(baseURL)/chat/completions") else {
+                        continuation.finish(throwing: GeminiError.apiError("Invalid \(providerName) API URL"))
+                        return
+                    }
+
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                    // Build messages
+                    var userParts: [[String: Any]] = []
+
+                    if let imgData = imageData {
+                        let base64 = imgData.base64EncodedString()
+                        userParts.append([
+                            "type": "image_url",
+                            "image_url": ["url": "data:image/jpeg;base64,\(base64)"]
+                        ])
+                    }
+
+                    userParts.append([
+                        "type": "text",
+                        "text": userContent
+                    ])
+
+                    let body: [String: Any] = [
+                        "model": modelName,
+                        "max_tokens": 4096,
+                        "temperature": 0.7,
+                        "messages": [
+                            ["role": "system", "content": systemPrompt],
+                            ["role": "user", "content": userParts]
+                        ]
+                    ]
+
+                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+                    let (data, response) = try await URLSession.shared.data(for: request)
+
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: GeminiError.apiError("Invalid response from \(providerName)"))
+                        return
+                    }
+
+                    guard httpResponse.statusCode == 200 else {
+                        let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                        continuation.finish(throwing: GeminiError.apiError("\(providerName) \(httpResponse.statusCode): \(String(errorBody.prefix(300)))"))
+                        return
+                    }
+
+                    guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let choices = json["choices"] as? [[String: Any]],
+                          let message = choices.first?["message"] as? [String: Any],
+                          let text = message["content"] as? String else {
+                        continuation.finish(throwing: GeminiError.apiError("\(providerName): unexpected response format"))
+                        return
+                    }
+
+                    continuation.yield(text)
+                    continuation.finish()
+
+                } catch is CancellationError {
+                    continuation.finish(throwing: CancellationError())
+                } catch let error as GeminiError {
+                    continuation.finish(throwing: error)
+                } catch {
+                    continuation.finish(throwing: GeminiError.apiError("\(providerName): \(error.localizedDescription)"))
+                }
+            }
+        }
+    }
+}
+
 // MARK: - GeminiService (Unified Interface)
 
 final class GeminiService: @unchecked Sendable {
@@ -415,6 +524,7 @@ final class GeminiService: @unchecked Sendable {
     private var googleAIModel: GenerativeModel?
     private var vertexProvider: VertexAIProvider?
     private var claudeProvider: ClaudeProvider?
+    private var openAIProvider: OpenAICompatibleProvider?
 
     /// Init with Google AI API key
     init(apiKey: String, modelName: String, modeId: UUID, systemPrompt: String) {
@@ -445,6 +555,14 @@ final class GeminiService: @unchecked Sendable {
         )
     }
 
+    /// Init with OpenAI-compatible provider (OpenAI, Groq, Mistral, Ollama, OpenRouter, xAI)
+    init(openAIKey: String, baseURL: String, modelName: String, providerName: String, modeId: UUID, systemPrompt: String) {
+        self.modelName = modelName
+        self.modeId = modeId
+        self.systemPrompt = systemPrompt
+        self.openAIProvider = OpenAICompatibleProvider(apiKey: openAIKey, baseURL: baseURL, modelName: modelName, providerName: providerName)
+    }
+
     /// Init with Claude API key
     init(claudeApiKey: String, modelName: String, modeId: UUID, systemPrompt: String) {
         self.modelName = modelName
@@ -467,7 +585,9 @@ final class GeminiService: @unchecked Sendable {
         }
         prompt += "=== CURRENT QUESTION ===\n\n\(question)"
 
-        if let claude = claudeProvider {
+        if let openai = openAIProvider {
+            return openai.generate(systemPrompt: systemPrompt, userContent: prompt)
+        } else if let claude = claudeProvider {
             return claude.generate(systemPrompt: systemPrompt, userContent: prompt)
         } else if let vertex = vertexProvider {
             let content: [[String: Any]] = [
@@ -507,20 +627,7 @@ final class GeminiService: @unchecked Sendable {
             prompt += "\n\n=== OCR TEXT ===\n\(ocr)"
         }
 
-        if let claude = claudeProvider {
-            return claude.generate(systemPrompt: systemPrompt, userContent: prompt, imageData: jpegData)
-        } else if let vertex = vertexProvider {
-            let imageB64 = jpegData.base64EncodedString()
-            let content: [[String: Any]] = [
-                ["role": "user", "parts": [
-                    ["text": prompt],
-                    ["inlineData": ["mimeType": "image/jpeg", "data": imageB64]]
-                ]]
-            ]
-            return vertex.streamGenerate(systemPrompt: systemPrompt, userContent: content)
-        } else {
-            return streamGoogleAIWithImage(prompt, jpegData)
-        }
+        return routeImageRequest(prompt: prompt, jpegData: jpegData)
     }
 
     /// Ask with image using a fullscreen prompt (no cursor focus, for retry stage 2)
@@ -548,7 +655,14 @@ final class GeminiService: @unchecked Sendable {
             prompt += "\n\n=== OCR TEXT ===\n\(ocr)"
         }
 
-        if let claude = claudeProvider {
+        return routeImageRequest(prompt: prompt, jpegData: jpegData)
+    }
+
+    /// Route image requests to the active provider
+    private func routeImageRequest(prompt: String, jpegData: Data) -> AsyncThrowingStream<String, Error> {
+        if let openai = openAIProvider {
+            return openai.generate(systemPrompt: systemPrompt, userContent: prompt, imageData: jpegData)
+        } else if let claude = claudeProvider {
             return claude.generate(systemPrompt: systemPrompt, userContent: prompt, imageData: jpegData)
         } else if let vertex = vertexProvider {
             let imageB64 = jpegData.base64EncodedString()

@@ -308,6 +308,8 @@ private struct AISettingsTab: View {
     @State private var claudeKeyInput: String = ""
     @State private var showClaudeKey: Bool = false
     @State private var claudeSaved: Bool = false
+    @State private var openAIKeyInput: String = ""
+    @State private var openAISaved: Bool = false
 
     var body: some View {
         @Bindable var state = appState
@@ -315,9 +317,10 @@ private struct AISettingsTab: View {
         Form {
             Section("Provider") {
                 Picker("AI Provider", selection: $state.aiProvider) {
+                    Text("Google AI (API Key) — Free").tag("googleai")
                     Text("Vertex AI (Service Account)").tag("vertexai")
-                    Text("Google AI (API Key)").tag("googleai")
-                    Text("Claude (API Key)").tag("claude")
+                    Text("Claude (Anthropic)").tag("claude")
+                    Text("OpenAI / Groq / Mistral / Ollama / OpenRouter / xAI").tag("openai-compatible")
                 }
                 .pickerStyle(.radioGroup)
                 .onChange(of: appState.aiProvider) {
@@ -362,6 +365,50 @@ private struct AISettingsTab: View {
                         Label("Key file not found", systemImage: "xmark.circle.fill")
                             .foregroundStyle(.red)
                             .font(.caption)
+                    }
+                }
+            } else if appState.aiProvider == "openai-compatible" {
+                Section("Provider Preset") {
+                    Picker("Provider", selection: Binding(
+                        get: { appState.openAIProviderName },
+                        set: { name in
+                            appState.openAIProviderName = name
+                            if let preset = OpenAICompatibleProvider.presets.first(where: { $0.name == name }) {
+                                appState.openAIBaseURL = preset.baseURL
+                                appState.selectedModel = preset.defaultModel
+                            }
+                        }
+                    )) {
+                        ForEach(OpenAICompatibleProvider.presets, id: \.id) { preset in
+                            Text(preset.name).tag(preset.name)
+                        }
+                        Text("Custom").tag("Custom")
+                    }
+                }
+                Section("\(appState.openAIProviderName) Configuration") {
+                    if appState.openAIProviderName == "Custom" || !OpenAICompatibleProvider.presets.contains(where: { $0.name == appState.openAIProviderName }) {
+                        TextField("Base URL", text: Binding(
+                            get: { appState.openAIBaseURL },
+                            set: { appState.openAIBaseURL = $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                    }
+                    HStack {
+                        SecureField("API Key", text: $openAIKeyInput)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") {
+                            appState.openAIApiKey = openAIKeyInput
+                            openAISaved = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { openAISaved = false }
+                        }
+                        .disabled(openAIKeyInput.isEmpty && !appState.openAIBaseURL.contains("localhost"))
+                    }
+                    if openAISaved {
+                        Text("Key saved!").foregroundStyle(.green).font(.caption)
+                    }
+                    if appState.openAIBaseURL.contains("localhost") {
+                        Text("Ollama detected — no API key needed for local models.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             } else if appState.aiProvider == "claude" {
