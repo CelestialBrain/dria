@@ -160,7 +160,7 @@ final class AppState {
     }
 
     /// "vertexai", "googleai", or "claude"
-    var aiProvider: String = "vertexai" {
+    var aiProvider: String = "googleai" {
         didSet {
             UserDefaults.standard.set(aiProvider, forKey: "aiProvider")
             geminiService = nil
@@ -204,7 +204,7 @@ final class AppState {
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
 
-        aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "vertexai"
+        aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "googleai"
 
         modes = modeManager.loadModes()
         activeModeId = UUID(uuidString: UserDefaults.standard.string(forKey: "activeModeId") ?? "") ?? StudyMode.general.id
@@ -407,7 +407,12 @@ final class AppState {
         if aiProvider == "vertexai" {
             let saPath = serviceAccountKeyPath
             guard !saPath.isEmpty && FileManager.default.fileExists(atPath: saPath) else {
-                errorMessage = "SA key not found at: \(saPath)"
+                // No SA key — try falling back to Google AI if API key exists
+                if let apiKey = try? keychain.getAPIKey(), !apiKey.isEmpty {
+                    geminiService = GeminiService(apiKey: apiKey, modelName: selectedModel, modeId: activeModeId, systemPrompt: prompt)
+                    return geminiService
+                }
+                errorMessage = "No AI provider configured. Go to Settings → AI Model."
                 return nil
             }
             do {
