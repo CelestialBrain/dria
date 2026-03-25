@@ -24,18 +24,18 @@ final class UpdateChecker {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
-    /// Launch at login
-    var launchAtLogin: Bool {
-        get { SMAppService.mainApp.status == .enabled }
-        set {
+    /// Launch at login — stored property so @Observable tracks it
+    var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled {
+        didSet {
             do {
-                if newValue {
+                if launchAtLogin {
                     try SMAppService.mainApp.register()
                 } else {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                // Silently fail — user can toggle in System Settings
+                // Revert on failure
+                launchAtLogin = SMAppService.mainApp.status == .enabled
             }
         }
     }

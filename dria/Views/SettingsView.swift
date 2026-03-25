@@ -654,10 +654,8 @@ private struct GeneralSettingsTab: View {
                     }
                 }
 
-                Toggle("Launch at login", isOn: Binding(
-                    get: { appState.updateChecker.launchAtLogin },
-                    set: { appState.updateChecker.launchAtLogin = $0 }
-                ))
+                @Bindable var checker = appState.updateChecker
+                Toggle("Launch at login", isOn: $checker.launchAtLogin)
             }
 
             Section("Capture Workflow") {
