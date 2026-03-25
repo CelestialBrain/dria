@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ResponseView: View {
+    @Environment(AppState.self) private var appState
     let text: String
     let isStreaming: Bool
 
@@ -32,6 +33,7 @@ struct ResponseView: View {
                 HStack {
                     Spacer()
                     Button(action: {
+                        appState.clipboard.skipNextChange = true
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(text, forType: .string)
                     }) {

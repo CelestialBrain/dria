@@ -777,6 +777,7 @@ private struct GeneralSettingsTab: View {
 
                     HStack {
                         Button("Export Summary") {
+                            appState.clipboard.skipNextChange = true
                             let summary = AnalyticsService.shared.exportSummary()
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(summary, forType: .string)

@@ -12,6 +12,9 @@ final class ClipboardService {
     private var lastChangeCount: Int = NSPasteboard.general.changeCount
     var detector = QuestionDetector()
 
+    /// Set to true before writing to clipboard programmatically — skips next detection
+    var skipNextChange: Bool = false
+
     var onQuestionDetected: ((DetectedQuestion, String) -> Void)?
 
     func startMonitoring() {
@@ -25,6 +28,12 @@ final class ClipboardService {
             let current = NSPasteboard.general.changeCount
             guard current != self.lastChangeCount else { return }
             self.lastChangeCount = current
+
+            // Skip if we wrote to clipboard ourselves
+            if self.skipNextChange {
+                self.skipNextChange = false
+                return
+            }
 
             guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
 

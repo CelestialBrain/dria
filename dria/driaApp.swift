@@ -255,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if isShowingMarquee && isMarqueeAnswer {
             let clean = marqueeFullText.trimmingCharacters(in: CharacterSet.whitespaces)
             if !clean.isEmpty {
+                appState.clipboard.skipNextChange = true
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(clean, forType: .string)
                 setButtonText("✓ Copied!")

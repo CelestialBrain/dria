@@ -278,6 +278,7 @@ final class AppState {
 
     /// Auto-answer a detected question from clipboard
     func answerDetectedQuestion(_ question: DetectedQuestion, rawText: String) async {
+        guard !isProcessing else { return } // Prevent overlap with manual send
         AnalyticsService.shared.track(.autoAnswer)
         AnalyticsService.shared.track(.clipboardDetection(question.type))
         guard let gemini = getOrCreateGemini() else { return }
@@ -565,6 +566,7 @@ final class AppState {
     }
 
     func sendCapturedToAI() async {
+        guard !isProcessing else { return } // Prevent double-send
         AnalyticsService.shared.track(.query(provider: aiProvider))
         if chatHistory.count > 100 { chatHistory.removeFirst(chatHistory.count - 80) }
 
@@ -722,6 +724,7 @@ final class AppState {
     // MARK: - Regular Chat
 
     func submitQuestion() async {
+        guard !isStreaming else { return } // Prevent double-submit
         if chatHistory.count > 100 { chatHistory.removeFirst(chatHistory.count - 80) }
         let question = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
