@@ -210,6 +210,13 @@ final class AppState {
         didSet { UserDefaults.standard.set(smartDetectionEnabled, forKey: "smartDetectionEnabled") }
     }
 
+    var detectionSensitivity: String = "normal" {
+        didSet {
+            UserDefaults.standard.set(detectionSensitivity, forKey: "detectionSensitivity")
+            clipboard.detector.sensitivity = DetectionSensitivity(rawValue: detectionSensitivity) ?? .normal
+        }
+    }
+
     /// Last detected question from clipboard — NOT @Published to avoid re-render
     private(set) var lastDetectedQuestion: DetectedQuestion?
 
@@ -225,6 +232,7 @@ final class AppState {
         autoMonitorClipboard = UserDefaults.standard.bool(forKey: "autoMonitorClipboard")
         autoAnswerOnCopy = UserDefaults.standard.bool(forKey: "autoAnswerOnCopy")
         smartDetectionEnabled = UserDefaults.standard.object(forKey: "smartDetectionEnabled") as? Bool ?? true
+        detectionSensitivity = UserDefaults.standard.string(forKey: "detectionSensitivity") ?? "normal"
         marqueeWidth = UserDefaults.standard.object(forKey: "marqueeWidth") as? Int ?? 30
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
@@ -261,6 +269,7 @@ final class AppState {
             }
         }
 
+        clipboard.detector.sensitivity = DetectionSensitivity(rawValue: detectionSensitivity) ?? .normal
         if autoMonitorClipboard {
             clipboard.startMonitoring()
         }

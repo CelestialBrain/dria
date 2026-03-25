@@ -661,6 +661,14 @@ private struct GeneralSettingsTab: View {
                 Toggle("Auto-answer on copy", isOn: $state.autoAnswerOnCopy)
                 Text("Automatically sends detected questions to AI. Works best on Canvas/GForms.")
                     .font(.caption).foregroundStyle(.secondary)
+
+                Picker("Sensitivity", selection: $state.detectionSensitivity) {
+                    Text("Normal — balanced").tag("normal")
+                    Text("Sensitive — catches more").tag("sensitive")
+                    Text("Catch All — everything you copy").tag("catchAll")
+                }
+                Text(DetectionSensitivity(rawValue: state.detectionSensitivity)?.description ?? "")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Shortcuts (⌘⌥ + key)") {

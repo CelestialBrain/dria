@@ -10,7 +10,7 @@ final class ClipboardService {
     var isMonitoring: Bool = false
     private var timer: Timer?
     private var lastChangeCount: Int = NSPasteboard.general.changeCount
-    private let detector = QuestionDetector()
+    var detector = QuestionDetector()
 
     var onQuestionDetected: ((DetectedQuestion, String) -> Void)?
 
@@ -29,7 +29,7 @@ final class ClipboardService {
             guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
 
             if let question = self.detector.detect(from: text),
-               question.confidence >= QuestionDetector.minConfidence {
+               question.confidence >= self.detector.sensitivity.minConfidence {
                 self.onQuestionDetected?(question, text)
             }
         }
