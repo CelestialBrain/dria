@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Xcode
+build/
+DerivedData/
+*.xcuserdata/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# Debug
+*.log
+clipboard_debug.log
+
+# User data
+DRIA_Query_Log.docx
+dria_query_log.md
+
+# Secrets
+sa-key.json
+*.pem
+apikey.txt

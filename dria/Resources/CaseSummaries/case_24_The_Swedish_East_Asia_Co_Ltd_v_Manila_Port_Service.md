@@ -1,0 +1,5 @@
+# The Swedish East Asia Co., Ltd. v. Manila Port Service
+
+Summary: Swedish East Asia Co.'s ship mistakenly unloaded steel bundles meant for Hongkong at Manila Port Service (MPS). When Swedish East Asia tried to retrieve them, 8 bundles were missing. MPS argued its management contract's short prescriptive period applied and that Swedish East Asia, an unlicensed foreign company, couldn't sue. The Supreme Court said the contract didn't apply because this was a mistaken delivery (*solutio indebiti*), making MPS liable to return the goods. The Court also ruled that an unlicensed foreign corporation can sue for an "isolated transaction."
+
+LL: Don't assume contractual limitations apply to every situation, especially if the obligation arises from a mistake. Always remember that *solutio indebiti* (Civil Code Art. 2154) creates an obligation to return unduly received goods, bypassing specific contract terms. Make sure to distinguish between "doing business" and "isolated transactions" for foreign corporations' capacity to sue.
