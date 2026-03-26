@@ -11,8 +11,8 @@
     <!-- Header -->
     <div class="header">
       <div class="mode-picker">
-        <select id="modePicker">
-          <option value="general">General</option>
+        <select id="modePicker" onchange="modesManager.switch(this.value)">
+          <option value="general">📚 General</option>
         </select>
         <span class="file-count" id="fileCount">0 files</span>
       </div>
@@ -22,15 +22,22 @@
       </div>
     </div>
 
-    <!-- Chat area -->
+    <!-- Answer overlay (marquee equivalent) -->
+    <div class="answer-overlay" id="answerOverlay" style="display:none">
+      <span class="answer-short" id="answerShort"></span>
+      <button class="overlay-close" id="overlayClose" onclick="document.getElementById('answerOverlay').style.display='none'">✕</button>
+    </div>
+
+    <!-- Chat area (drag & drop) -->
     <div class="chat-area" id="chatArea">
       <div class="empty-state" id="emptyState">
         <div class="empty-icon">📚</div>
-        <div class="empty-title">dria</div>
+        <div class="empty-title">dria — <span id="modeNameDisplay">General</span></div>
         <div class="empty-subtitle">
           Ctrl+Alt+1 to capture screen<br>
           Ctrl+Alt+2 to send to AI<br>
-          Ctrl+Alt+3 to toggle chat
+          Ctrl+Alt+3 to toggle chat<br><br>
+          Drop files here to add to knowledge base
         </div>
       </div>
     </div>
@@ -49,8 +56,18 @@
       <button class="tool-btn" id="screenshotBtn">📷 Screenshot</button>
       <button class="tool-btn" id="watchBtn">👁 Auto</button>
       <div class="spacer"></div>
-      <button class="tool-btn icon-only" id="toolsBtn" title="Tools">🔧</button>
+      <div class="tools-dropdown">
+        <button class="tool-btn icon-only" id="toolsBtn">🔧</button>
+        <div class="tools-menu" id="toolsMenu">
+          <button onclick="tools.generatePractice()">❓ Practice Question</button>
+          <button onclick="showFlashcards()">🗂 Flashcards</button>
+          <button onclick="tools.exportChat()">📄 Export Chat</button>
+          <button onclick="document.getElementById('fileInput').click()">📁 Import Files</button>
+        </div>
+      </div>
     </div>
+
+    <input type="file" id="fileInput" multiple accept=".txt,.md,.pdf,.html,.htm,.rtf,.csv" style="display:none">
 
     <!-- Input area -->
     <div class="input-area">
@@ -60,7 +77,23 @@
     </div>
   </div>
 
-  <!-- Settings panel (hidden by default) -->
+  <!-- Flashcard modal -->
+  <div class="modal" id="flashcardModal" style="display:none">
+    <div class="modal-content">
+      <h3>Flashcards — <span id="flashcardMode"></span></h3>
+      <div class="flashcard" id="flashcard" onclick="flipCard()">
+        <div class="flashcard-text" id="flashcardText">Loading...</div>
+      </div>
+      <div class="flashcard-nav">
+        <button onclick="prevCard()">← Prev</button>
+        <span id="flashcardCount">0/0</span>
+        <button onclick="nextCard()">Next →</button>
+      </div>
+      <button class="secondary-btn" onclick="document.getElementById('flashcardModal').style.display='none'">Done</button>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
   <div class="settings-panel" id="settingsPanel" style="display:none">
     <div class="settings-header">
       <h3>Settings</h3>
@@ -71,13 +104,11 @@
       <button class="tab" data-tab="modes">Modes</button>
       <button class="tab" data-tab="general">General</button>
     </div>
-    <div class="settings-content" id="settingsContent">
-      <!-- AI Model tab -->
+    <div class="settings-content">
       <div class="tab-content active" id="tab-ai">
         <label>Provider</label>
         <select id="providerSelect">
-          <option value="googleai">Google AI (API Key)</option>
-          <option value="vertexai">Vertex AI</option>
+          <option value="googleai">Google AI (Free)</option>
           <option value="claude">Claude</option>
           <option value="openai">OpenAI</option>
           <option value="groq">Groq</option>
@@ -95,9 +126,32 @@
         </select>
         <button class="primary-btn" id="saveApiBtn">Save</button>
       </div>
+      <div class="tab-content" id="tab-modes">
+        <div id="modesList"></div>
+        <input id="newModeName" placeholder="New mode name (e.g. LLAW 113)" style="margin-top:8px">
+        <button class="primary-btn" onclick="createMode()">Create Mode</button>
+        <h4 style="margin-top:12px">Files in <span id="modeFilesLabel"></span></h4>
+        <div id="modeFilesList"></div>
+      </div>
+      <div class="tab-content" id="tab-general">
+        <label>Detection Sensitivity</label>
+        <select id="sensitivitySelect">
+          <option value="normal">Normal</option>
+          <option value="sensitive">Sensitive</option>
+          <option value="catchAll">Catch All</option>
+        </select>
+        <label>Copy Mode</label>
+        <select id="copyModeSelect">
+          <option value="short">Short answer only</option>
+          <option value="full">Full explanation</option>
+        </select>
+        <div style="margin-top:16px;color:var(--text-tertiary);font-size:11px">dria desktop v1.0.0</div>
+      </div>
     </div>
   </div>
 
-  <script type="module" src="js/app.js"></script>
+  <script src="js/modes.js"></script>
+  <script src="js/tools.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

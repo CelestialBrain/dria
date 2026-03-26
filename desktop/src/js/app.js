@@ -1,9 +1,12 @@
 // dria desktop — main app logic
 
-// Tauri API — available when running in Tauri, graceful fallback in browser
-const isTauri = !!window.__TAURI__;
+// Tauri API
+const isTauri = window.__TAURI__ !== undefined;
 const invoke = isTauri ? window.__TAURI__.core.invoke : async () => null;
 const listen = isTauri ? window.__TAURI__.event.listen : async () => {};
+
+// Init modes
+modesManager.init();
 
 // Listen for global shortcut events from Rust
 listen('global-shortcut', (event) => {
@@ -199,25 +202,29 @@ function getProviderHeaders() {
 function getProviderBody(question) {
   const systemPrompt = 'You are dria, an intelligent study assistant. Start every response with a short direct answer (max 15 words), then --- on the next line, then the full explanation. Answer in plain text, no markdown.';
 
+  // Add RAG context from knowledge base
+  const context = modesManager.buildContext(modesManager.activeId, question);
+  const fullQuestion = context ? `Context from study materials:\n${context}\n\nQuestion: ${question}` : question;
+
   switch (state.provider) {
     case 'googleai':
       return {
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: question }] }],
+        contents: [{ role: 'user', parts: [{ text: fullQuestion }] }],
       };
     case 'claude':
       return {
         model: state.model,
         max_tokens: 2048,
         system: systemPrompt,
-        messages: [{ role: 'user', content: question }],
+        messages: [{ role: 'user', content: fullQuestion }],
       };
     default: // OpenAI-compatible
       return {
         model: state.model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
+          { role: 'user', content: fullQuestion },
         ],
       };
   }
@@ -442,7 +449,160 @@ voiceStop.addEventListener('click', () => {
   if (recognition) recognition.stop();
 });
 
+// ============= File handling =============
+
+function handleFileSelect(event) {
+  const files = event.target.files;
+  importFiles(files);
+}
+
+async function handleFileDrop(event) {
+  event.preventDefault();
+  chatArea.classList.remove('dragover');
+  const files = event.dataTransfer.files;
+  importFiles(files);
+}
+
+chatArea.addEventListener('dragover', (e) => { e.preventDefault(); chatArea.classList.add('dragover'); });
+chatArea.addEventListener('dragleave', () => chatArea.classList.remove('dragover'));
+chatArea.addEventListener('drop', handleFileDrop);
+
+async function importFiles(files) {
+  for (const file of files) {
+    const text = await tools.readFileAsText(file);
+    if (text) {
+      const chunks = modesManager.addFileText(modesManager.activeId, file.name, text);
+      addMessage('assistant', `Imported ${file.name} (${chunks} chunks)`);
+      updateModeUI();
+    }
+  }
+}
+
+document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+// ============= Flashcards =============
+
+let flashcardData = [];
+let flashcardIdx = 0;
+let flashcardFlipped = false;
+
+async function showFlashcards() {
+  document.getElementById('flashcardModal').style.display = 'flex';
+  document.getElementById('flashcardMode').textContent = modesManager.active.name;
+  document.getElementById('flashcardText').textContent = 'Generating...';
+  flashcardData = await tools.generateFlashcards();
+  flashcardIdx = 0;
+  flashcardFlipped = false;
+  renderFlashcard();
+}
+
+function renderFlashcard() {
+  if (!flashcardData.length) {
+    document.getElementById('flashcardText').textContent = 'No flashcards generated';
+    return;
+  }
+  const card = flashcardData[flashcardIdx];
+  document.getElementById('flashcardText').textContent = flashcardFlipped ? card.back : card.front;
+  document.getElementById('flashcard').classList.toggle('flipped', flashcardFlipped);
+  document.getElementById('flashcardCount').textContent = `${flashcardIdx + 1}/${flashcardData.length}`;
+}
+
+function flipCard() { flashcardFlipped = !flashcardFlipped; renderFlashcard(); }
+function prevCard() { if (flashcardIdx > 0) { flashcardIdx--; flashcardFlipped = false; renderFlashcard(); } }
+function nextCard() { if (flashcardIdx < flashcardData.length - 1) { flashcardIdx++; flashcardFlipped = false; renderFlashcard(); } }
+
+// ============= Mode management =============
+
+function createMode() {
+  const name = document.getElementById('newModeName').value.trim();
+  if (!name) return;
+  modesManager.create(name);
+  document.getElementById('newModeName').value = '';
+  renderModeSettings();
+}
+
+function renderModeSettings() {
+  const list = document.getElementById('modesList');
+  list.innerHTML = '';
+  modesManager.modes.forEach(m => {
+    const div = document.createElement('div');
+    div.className = 'mode-item';
+    div.innerHTML = `<span>${m.icon} ${m.name}</span>`;
+    if (m.id !== 'general') {
+      const del = document.createElement('button');
+      del.className = 'del-btn';
+      del.textContent = '✕ Delete';
+      del.onclick = () => { modesManager.delete(m.id); renderModeSettings(); };
+      div.appendChild(del);
+    }
+    list.appendChild(div);
+  });
+
+  // Show files for active mode
+  document.getElementById('modeFilesLabel').textContent = modesManager.active.name;
+  const filesList = document.getElementById('modeFilesList');
+  filesList.innerHTML = '';
+  modesManager.active.files.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'file-item';
+    div.innerHTML = `<span>📄 ${f.name} (${f.chunkCount} chunks)</span>`;
+    const del = document.createElement('button');
+    del.className = 'del-btn';
+    del.textContent = '✕';
+    del.onclick = () => { modesManager.removeFile(modesManager.activeId, f.name); renderModeSettings(); updateModeUI(); };
+    div.appendChild(del);
+    filesList.appendChild(div);
+  });
+}
+
+// ============= Two-tier answer + overlay =============
+
+function showAnswerOverlay(text) {
+  // Extract short answer (before ---)
+  const lines = text.split('\n');
+  const sepIdx = lines.findIndex(l => l.trim() === '---');
+  const shortAnswer = sepIdx > 0 ? lines.slice(0, sepIdx).join(' ').trim() : text.slice(0, 80);
+
+  document.getElementById('answerShort').textContent = shortAnswer;
+  document.getElementById('answerOverlay').style.display = 'flex';
+
+  // Auto-hide after 10s
+  setTimeout(() => { document.getElementById('answerOverlay').style.display = 'none'; }, 10000);
+}
+
+// Override addMessage to show overlay for assistant messages
+const _origAddMessage = addMessage;
+addMessage = function(role, content) {
+  _origAddMessage(role, content);
+  if (role === 'assistant' && content && !content.startsWith('Imported') && !content.startsWith('Error')) {
+    showAnswerOverlay(content);
+  }
+  // Save per-mode chat
+  modesManager.saveChat(modesManager.activeId, state.messages);
+};
+
+// ============= Settings tab switching =============
+
+document.querySelectorAll('.settings-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = document.getElementById('tab-' + tab.dataset.tab);
+    if (target) target.classList.add('active');
+    if (tab.dataset.tab === 'modes') renderModeSettings();
+  });
+});
+
+// ============= Init =============
+
 // Load settings
 document.getElementById('apiKeyInput').value = state.apiKey;
 document.getElementById('providerSelect').value = state.provider;
 document.getElementById('modelSelect').value = state.model;
+
+// Load per-mode chat
+state.messages = modesManager.loadChat(modesManager.activeId);
+renderChat();
+updateModeUI();
+document.getElementById('modeNameDisplay').textContent = modesManager.active.name;
