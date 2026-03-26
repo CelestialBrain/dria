@@ -7,6 +7,27 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.1</title>
+            <description><![CDATA[
+                <h2>dria v1.7.1</h2>
+                <ul>
+                    <li>Permanent fix for 100% CPU render loop</li>
+                    <li>AI streaming throttled (no more UI freeze)</li>
+                </ul>
+            ]]></description>
+            <pubDate>Thu, 27 Mar 2026 00:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.7.1/dria-v1.7.1.dmg"
+                sparkle:version="12"
+                sparkle:shortVersionString="1.7.1"
+                length="2811616"
+                type="application/octet-stream"
+                sparkle:edSignature="JRKtqTERrlOv95dpA/fQuhMZyC+rEzZUMWTUD9qI+Lk6cKc84T/o+5mBTVEkrl301QNTKLCto8Xrus86iXNjDQ=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.7.0</title>
             <description><![CDATA[
                 <h2>dria v1.7.0</h2>
