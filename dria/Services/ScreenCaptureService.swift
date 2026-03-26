@@ -144,13 +144,15 @@ struct ScreenCaptureService {
         return markedImage
     }
 
-    /// Interactive screen capture (user selects area)
+    /// Interactive screen capture (user selects area) — saves to file to avoid Clop interception
     func captureInteractive() async -> NSImage? {
+        let tempFile = NSTemporaryDirectory() + "dria_select_\(UUID().uuidString).png"
+
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-                process.arguments = ["-i", "-c"]
+                process.arguments = ["-i", "-x", tempFile] // -i interactive, -x no sound, save to file (not clipboard)
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = FileHandle.nullDevice
 
@@ -162,20 +164,18 @@ struct ScreenCaptureService {
                     return
                 }
 
-                guard process.terminationStatus == 0 else {
+                // User cancelled selection
+                guard process.terminationStatus == 0,
+                      FileManager.default.fileExists(atPath: tempFile),
+                      let image = NSImage(contentsOfFile: tempFile) else {
                     continuation.resume(returning: nil)
                     return
                 }
 
-                // Small delay for clipboard
-                Thread.sleep(forTimeInterval: 0.2)
+                // Clean up temp file
+                try? FileManager.default.removeItem(atPath: tempFile)
 
-                let pb = NSPasteboard.general
-                if let imageData = pb.data(forType: .tiff) ?? pb.data(forType: .png) {
-                    continuation.resume(returning: NSImage(data: imageData))
-                } else {
-                    continuation.resume(returning: nil)
-                }
+                continuation.resume(returning: image)
             }
         }
     }

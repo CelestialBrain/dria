@@ -13,11 +13,15 @@ final class VoiceInputService {
     var isListening: Bool = false
     var transcript: String = ""
     var onTranscriptReady: ((String) -> Void)?
+    var onPartialTranscript: ((String) -> Void)?
 
     private var recognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
+    private var permissionGranted = false
+    /// Text that was in the field before voice started — preserve it
+    var prefixText: String = ""
 
     /// Supported languages for speech recognition
     static let supportedLanguages: [(id: String, name: String)] = [
@@ -35,6 +39,10 @@ final class VoiceInputService {
 
     init() {
         recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        // Pre-warm: request permission at init so it's ready when user taps mic
+        Task {
+            permissionGranted = await requestPermission()
+        }
     }
 
     func setLanguage(_ localeId: String) {
@@ -43,36 +51,73 @@ final class VoiceInputService {
 
     /// Request permission (one-time)
     func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
+        // Speech permission
+        let speechOk = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status == .authorized)
             }
         }
+        // Mic permission
+        let micOk: Bool
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            micOk = true
+        case .notDetermined:
+            micOk = await AVCaptureDevice.requestAccess(for: .audio)
+        default:
+            micOk = false
+        }
+        permissionGranted = speechOk && micOk
+        return permissionGranted
     }
 
-    /// Start listening — call when hotkey pressed
+    /// Start listening — call when mic button tapped
     func startListening() {
         guard !isListening else { return }
         guard let recognizer, recognizer.isAvailable else { return }
+
+        // Check permissions
+        guard permissionGranted else {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
+
+        // Show listening state immediately — don't wait for engine
+        isListening = true
+        transcript = ""
+        prefixText = ""
 
         // Cancel any existing task
         recognitionTask?.cancel()
         recognitionTask = nil
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let request = recognitionRequest else { return }
+        guard let request = recognitionRequest else {
+            isListening = false
+            return
+        }
         request.shouldReportPartialResults = true
 
-        // Use on-device if available
+        // Don't force on-device — allow server for better Filipino support
+        // On-device doesn't support all languages
         if recognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
+            // Only use on-device for English — Filipino needs server
+            let locale = recognizer.locale.identifier
+            if locale.hasPrefix("en") {
+                request.requiresOnDeviceRecognition = true
+            }
         }
-
-        transcript = ""
-        isListening = true
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+
+        guard recordingFormat.sampleRate > 0 else {
+            isListening = false
+            return
+        }
+
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
             request.append(buffer)
         }
@@ -81,7 +126,7 @@ final class VoiceInputService {
         do {
             try audioEngine.start()
         } catch {
-            stopListening()
+            isListening = false
             return
         }
 
@@ -89,30 +134,47 @@ final class VoiceInputService {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let result {
+                    // bestTranscription contains the FULL transcript from start
+                    // It does NOT lose previous lines — Apple rebuilds the entire string each time
                     self.transcript = result.bestTranscription.formattedString
+                    // Combine with any prefix text that was in the field before
+                    let combined = self.prefixText.isEmpty
+                        ? self.transcript
+                        : self.prefixText + "\n" + self.transcript
+                    self.onPartialTranscript?(combined)
                 }
-                if error != nil || (result?.isFinal ?? false) {
-                    // Don't auto-stop — wait for user to release hotkey
+                if let error, !self.isListening {
+                    _ = error
                 }
             }
         }
     }
 
-    /// Stop listening — call when hotkey released. Returns final transcript.
+    /// Stop listening — keeps transcript in text field
     func stopListening() {
         guard isListening else { return }
-        isListening = false
+
+        // End audio first, then stop engine
+        recognitionRequest?.endAudio()
 
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
-        recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
-        recognitionRequest = nil
-        recognitionTask = nil
 
-        let final = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !final.isEmpty {
-            onTranscriptReady?(final)
+        // Wait a moment for final recognition result before canceling
+        let finalTranscript = transcript
+        recognitionTask?.finish() // finish() waits for final result, cancel() doesn't
+        recognitionRequest = nil
+
+        isListening = false
+
+        // Fire the final transcript callback — DO NOT clear the text
+        let trimmed = finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            onTranscriptReady?(trimmed)
+        }
+        // Don't nil out recognitionTask here — let it complete naturally
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.recognitionTask = nil
         }
     }
 }

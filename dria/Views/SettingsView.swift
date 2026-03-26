@@ -537,6 +537,15 @@ private struct CustomizationTab: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Section("Click to Copy") {
+                Picker("When clicking the icon, copy:", selection: $state.copyMode) {
+                    Text("Short answer only").tag("short")
+                    Text("Full explanation").tag("full")
+                    Text("Marquee text (what's scrolling)").tag("marquee")
+                }
+                .pickerStyle(.radioGroup)
+            }
+
             Section("Safety") {
                 Toggle("Lock chat window", isOn: $state.lockPopover)
                 Text("Prevents accidental popover. Use ⌘⌥3 for inline chat.")
@@ -621,12 +630,58 @@ private struct GeneralSettingsTab: View {
 
         Form {
 
+            Section("About") {
+                HStack {
+                    Text("dria")
+                        .font(.headline)
+                    Spacer()
+                    Text("v\(appState.updateChecker.currentVersion)")
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle("Launch at login", isOn: Binding(
+                    get: { appState.updateChecker.launchAtLogin },
+                    set: { appState.updateChecker.launchAtLogin = $0 }
+                ))
+
+                HStack {
+                    if appState.updateChecker.isChecking {
+                        ProgressView().controlSize(.small)
+                        Text("Checking...").font(.caption)
+                    } else if appState.updateChecker.updateAvailable {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("v\(appState.updateChecker.latestVersion) available")
+                            .font(.caption)
+                        Spacer()
+                        Button("Download Update") {
+                            appState.updateChecker.downloadUpdate()
+                        }
+                        .controlSize(.small)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Up to date")
+                            .font(.caption)
+                    }
+                    Spacer()
+                    Button("Check for Updates") {
+                        appState.updateChecker.checkForUpdates()
+                    }
+                    .controlSize(.small)
+                    .disabled(appState.updateChecker.isChecking)
+                }
+            }
+
             Section("Capture Workflow") {
                 Picker("Mode", selection: $state.captureWorkflow) {
-                    Text("Two-step: ⌘⌥1 capture, ⌘⌥2 send").tag("twoStep")
+                    Text("Two-step: ⌘⌥1 full screen, ⌘⌥2 send").tag("twoStep")
+                    Text("Select area: ⌘⌥1 pick region, ⌘⌥2 send").tag("selectArea")
                     Text("One-step: ⌘⌥1 capture + send").tag("oneStep")
                 }
                 .pickerStyle(.radioGroup)
+                Text("Select area lets you highlight just the question — like ⌘⇧4.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Auto-detect") {

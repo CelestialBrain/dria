@@ -19,6 +19,19 @@ extension NSImage {
     }
 }
 
+/// Extract the short direct answer (before "---") for the marquee
+private func extractShortAnswer(_ text: String) -> String {
+    let lines = text.components(separatedBy: "\n")
+    // Find the "---" separator
+    if let sepIdx = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) {
+        let shortPart = lines[..<sepIdx].joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !shortPart.isEmpty { return shortPart }
+    }
+    // No separator — take first line or first 80 chars
+    let first = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? text
+    return String(first.prefix(80))
+}
+
 private func stripMarkdown(_ text: String) -> String {
     var s = text
     s = s.replacingOccurrences(of: "***", with: "")
@@ -94,6 +107,11 @@ final class AppState {
     /// Lock popover — prevent accidental clicks from opening the chat window
     var lockPopover: Bool = false {
         didSet { UserDefaults.standard.set(lockPopover, forKey: "lockPopover") }
+    }
+
+    /// What to copy when clicking the icon: "short" (direct answer), "full" (full explanation), "marquee" (what's scrolling)
+    var copyMode: String = "short" {
+        didSet { UserDefaults.standard.set(copyMode, forKey: "copyMode") }
     }
 
     // MARK: - Services
@@ -254,6 +272,7 @@ final class AppState {
         marqueeWidth = UserDefaults.standard.object(forKey: "marqueeWidth") as? Int ?? 30
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
+        copyMode = UserDefaults.standard.string(forKey: "copyMode") ?? "short"
 
         aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "googleai"
 
@@ -329,11 +348,8 @@ final class AppState {
             for try await chunk in stream { response += chunk }
             response = stripMarkdown(response)
 
-            let clean = response
-                .replacingOccurrences(of: "\n", with: " · ")
-                .replacingOccurrences(of: "  ", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            onMarqueeUpdate?(clean.isEmpty ? "⚠️ Empty response" : "\(question.type.label): \(clean)")
+            let marqueeText = extractShortAnswer(response)
+            onMarqueeUpdate?(marqueeText.isEmpty ? "⚠️ Empty response" : "\(question.type.label): \(marqueeText)")
 
             chatHistory.append(ChatMessage(role: .assistant, content: response))
             AnalyticsService.shared.track(.responseReceived(charCount: response.count))
@@ -546,7 +562,6 @@ final class AppState {
     func handleCapture() {
         AnalyticsService.shared.track(.screenshot)
         if captureWorkflow == "oneStep" {
-            // One step: capture + auto-detect + send
             Task {
                 let result = await screenCapture.captureSilent()
                 capturedImage = result.image
@@ -556,8 +571,16 @@ final class AppState {
                     onMarqueeUpdate?("⚠️ \(result.error ?? "Capture failed")")
                 }
             }
+        } else if captureWorkflow == "selectArea" {
+            // Interactive area selection (like ⌘⇧4)
+            Task {
+                if let image = await screenCapture.captureInteractive() {
+                    capturedImage = image
+                    onMarqueeUpdate?("📸 ⌘⌥2 to send")
+                }
+            }
         } else {
-            // Two step: just capture
+            // Two step: full screen capture
             Task {
                 let result = await screenCapture.captureSilent()
                 capturedImage = result.image
@@ -655,11 +678,8 @@ final class AppState {
             }
 
             stealthResponse = stripMarkdown(rawResponse)
-            let clean = stealthResponse
-                .replacingOccurrences(of: "\n", with: " · ")
-                .replacingOccurrences(of: "  ", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            onMarqueeUpdate?(clean.isEmpty ? "⚠️ Empty response" : clean)
+            let marqueeText = extractShortAnswer(stealthResponse)
+            onMarqueeUpdate?(marqueeText.isEmpty ? "⚠️ Empty response" : marqueeText)
 
             chatHistory.append(ChatMessage(role: .assistant, content: stealthResponse))
         } catch {
@@ -722,11 +742,8 @@ final class AppState {
                 for try await chunk in stream { stealthResponse += chunk }
             }
             stealthResponse = stripMarkdown(stealthResponse)
-            let clean = stealthResponse
-                .replacingOccurrences(of: "\n", with: " · ")
-                .replacingOccurrences(of: "  ", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            onMarqueeUpdate?(clean.isEmpty ? "⚠️ Empty response" : clean)
+            let marqueeText = extractShortAnswer(stealthResponse)
+            onMarqueeUpdate?(marqueeText.isEmpty ? "⚠️ Empty response" : marqueeText)
 
             chatHistory.append(ChatMessage(role: .assistant, content: stealthResponse))
         } catch {
@@ -836,13 +853,19 @@ final class AppState {
         Task {
             let authorized = await voice.requestPermission()
             guard authorized else {
-                onMarqueeUpdate?("⚠️ Microphone permission denied")
+                onMarqueeUpdate?("⚠️ Speech permission denied")
                 return
             }
+            // Preserve existing text in the field
+            voice.prefixText = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Stream partial transcription into the text field in real-time
+            voice.onPartialTranscript = { [weak self] text in
+                self?.currentQuestion = text
+            }
+            // When stopped, keep the text — user decides when to send
             voice.onTranscriptReady = { [weak self] text in
-                guard let self else { return }
-                self.currentQuestion = text
-                Task { await self.submitQuestion() }
+                self?.currentQuestion = text
             }
             voice.startListening()
         }

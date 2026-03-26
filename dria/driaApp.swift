@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     // Marquee
     private var marqueeTimer: Timer?
     private var marqueeFullText: String = ""
+    private var marqueeShortAnswer: String = "" // Short answer for copy
     private var marqueeOffset: Int = 0
     private let marqueeSpeed: TimeInterval = 0.12
     private var isShowingMarquee = false
@@ -253,7 +254,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         if isTypingInline { return }
 
         if isShowingMarquee && isMarqueeAnswer {
-            let clean = marqueeFullText.trimmingCharacters(in: CharacterSet.whitespaces)
+            // Copy short or full answer based on user setting
+            let copyText: String
+            switch appState.copyMode {
+            case "short":
+                copyText = marqueeShortAnswer.isEmpty ? marqueeFullText : marqueeShortAnswer
+            case "full":
+                // Get the full response from the last assistant message
+                copyText = appState.chatHistory.last(where: { $0.role == .assistant })?.content ?? marqueeFullText
+            default: // "marquee" — copy exactly what's in the marquee
+                copyText = marqueeFullText
+            }
+            let clean = copyText.trimmingCharacters(in: CharacterSet.whitespaces)
             if !clean.isEmpty {
                 appState.clipboard.skipNextChange = true
                 NSPasteboard.general.clearContents()
@@ -341,6 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
         autoDismissTimer?.invalidate()
         autoDismissTimer = nil
 
+        marqueeShortAnswer = text // Store the short/marquee version
         marqueeFullText = "  \(text)  "
         marqueeOffset = 0
         isShowingMarquee = true

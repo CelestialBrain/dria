@@ -6,6 +6,33 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - Voice Wave Animation
+
+struct VoiceWaveView: View {
+    @State private var animating = false
+    let barCount = 20
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.red.opacity(0.8))
+                    .frame(width: 2, height: animating ? CGFloat.random(in: 4...20) : 4)
+                    .animation(
+                        .easeInOut(duration: Double.random(in: 0.15...0.4))
+                        .repeatForever(autoreverses: true)
+                        .delay(Double(i) * 0.03),
+                        value: animating
+                    )
+            }
+        }
+        .frame(height: 24)
+        .onAppear { animating = true }
+    }
+}
+
+// MARK: - Input View
+
 struct InputView: View {
     @Environment(AppState.self) private var appState
     @State private var showFlashcards = false
@@ -17,6 +44,30 @@ struct InputView: View {
         @Bindable var state = appState
 
         VStack(spacing: 8) {
+            // Voice wave bar — shows when listening
+            if appState.voice.isListening {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                    VoiceWaveView()
+                    Spacer()
+                    Text("Listening...")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button(action: { appState.stopVoiceInput() }) {
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.red.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            // Tool buttons row
             HStack(spacing: 8) {
                 Button(action: pasteFromClipboard) {
                     Label("Paste", systemImage: "doc.on.clipboard")
@@ -56,29 +107,48 @@ struct InputView: View {
                     Button(action: exportPDF) {
                         Label("Export to PDF", systemImage: "arrow.down.doc")
                     }
-                    Divider()
-                    Button(action: { appState.startVoiceInput() }) {
-                        Label("Voice Input", systemImage: "mic")
-                    }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.caption)
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 24)
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                let placeholder = appState.activeMode.id == StudyMode.general.id
-                    ? "Ask anything..."
-                    : "Ask about \(appState.activeMode.name)..."
+            // Text field + mic + send
+            HStack(alignment: .center, spacing: 6) {
+                let placeholder = appState.voice.isListening
+                    ? "Listening..."
+                    : (appState.activeMode.id == StudyMode.general.id
+                        ? "Ask anything..."
+                        : "Ask about \(appState.activeMode.name)...")
 
-                TextField(placeholder, text: $state.currentQuestion)
-                    .textFieldStyle(.plain)
-                    .onSubmit {
-                        Task { await appState.submitQuestion() }
+                ScrollView(.vertical, showsIndicators: false) {
+                    TextField(placeholder, text: $state.currentQuestion, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            Task { await appState.submitQuestion() }
+                        }
+                }
+                .frame(minHeight: 20, maxHeight: appState.currentQuestion.isEmpty ? 20 : 54)
+
+                // Mic button
+                Button(action: {
+                    if appState.voice.isListening {
+                        appState.stopVoiceInput()
+                    } else {
+                        appState.startVoiceInput()
                     }
+                }) {
+                    Image(systemName: appState.voice.isListening ? "mic.fill" : "mic")
+                        .font(.system(size: 16))
+                        .foregroundStyle(appState.voice.isListening ? .red : .secondary)
+                }
+                .buttonStyle(.plain)
 
+                // Send button
                 Button(action: {
                     Task { await appState.submitQuestion() }
                 }) {

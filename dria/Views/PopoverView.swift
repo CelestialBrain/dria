@@ -23,6 +23,7 @@ struct ModeIcon: View {
             .frame(width: size, height: size)
         } else {
             Image(systemName: iconName)
+                .frame(width: size, height: size)
         }
     }
 }
@@ -43,10 +44,10 @@ struct PopoverView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        ModeIcon(iconName: appState.activeMode.iconName)
+                        ModeIcon(iconName: appState.activeMode.iconName, size: 12)
                             .foregroundStyle(.tint)
                         Text(appState.activeMode.name)
-                            .font(.headline)
+                            .font(.system(size: 13, weight: .semibold))
                     }
                 }
                 .menuStyle(.borderlessButton)
@@ -77,7 +78,8 @@ struct PopoverView: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .padding(.vertical, 6)
+            .frame(height: 32)
 
             // Update banner
             if appState.updateChecker.updateAvailable {
