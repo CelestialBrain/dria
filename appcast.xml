@@ -7,6 +7,30 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.6.0</title>
+            <description><![CDATA[
+                <h2>dria v1.6.0 — Stability Release</h2>
+                <ul>
+                    <li>Fixed 4 crash bugs (screenshot threading, OCR, voice, TCC)</li>
+                    <li>0% CPU at idle, 0.3% memory baseline</li>
+                    <li>Voice input improvements</li>
+                    <li>Chat input field with Shift+Enter for newlines</li>
+                    <li>All debug logging removed</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 07:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.6.0/dria-v1.6.0.dmg"
+                sparkle:version="6"
+                sparkle:shortVersionString="1.6.0"
+                length="2794876"
+                type="application/octet-stream"
+                sparkle:edSignature="IUrIEreSl3O4akLoNgmGmLiiC4xyMgiPiw70z696gpeUONpdW4QYcyBH3RRzZyLAdxlM/PNjQX3MRlA0fSXyDQ=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.5.0</title>
             <description><![CDATA[
                 <h2>dria v1.5.0</h2>
@@ -14,7 +38,6 @@
                     <li>Voice input with real-time waveform and live transcription</li>
                     <li>Area selection capture (like Cmd+Shift+4)</li>
                     <li>Smart two-tier answers: short in marquee, full in chat</li>
-                    <li>Configurable copy mode (short/full/marquee)</li>
                     <li>Sparkle auto-updater for one-click updates</li>
                     <li>8 AI providers supported</li>
                 </ul>
