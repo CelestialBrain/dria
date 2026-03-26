@@ -146,6 +146,9 @@ async function submitQuestion() {
   state.isStreaming = false;
 
   addMessage('assistant', response);
+
+  // Analytics: count query
+  if (typeof analytics !== 'undefined') analytics.increment('totalQueries');
 }
 
 // Call AI provider
@@ -276,7 +279,14 @@ function renderChat() {
     copyBtn.className = 'copy-btn';
     copyBtn.textContent = '📋 Copy';
     copyBtn.onclick = () => {
-      navigator.clipboard.writeText(msg.content);
+      const mode = localStorage.getItem('copyMode') || 'short';
+      let textToCopy = msg.content;
+      if (mode === 'short') {
+        const lines = msg.content.split('\n');
+        const sepIdx = lines.findIndex(l => l.trim() === '---');
+        if (sepIdx > 0) textToCopy = lines.slice(0, sepIdx).join(' ').trim();
+      }
+      navigator.clipboard.writeText(textToCopy);
       copyBtn.textContent = '✓ Copied';
       setTimeout(() => copyBtn.textContent = '📋 Copy', 1500);
     };
@@ -307,6 +317,8 @@ async function captureScreen() {
     const imageData = await invoke('capture_screen');
     if (imageData) {
       state.capturedImage = imageData;
+      // Analytics: count screenshot
+      if (typeof analytics !== 'undefined') analytics.increment('screenshots');
       // Show preview in chat
       addMessage('user', '[Screenshot captured — press Ctrl+Alt+2 to send]');
       // Update last message with image
@@ -330,6 +342,8 @@ document.getElementById('screenshotBtn').addEventListener('click', captureScreen
 
 // Toggle window visibility
 function toggleWindow() {
+  // Respect lock popover setting
+  if (localStorage.getItem('lockPopover') === 'true') return;
   // Handled by Rust tray click — this is for hotkey
   if (isTauri) invoke('toggle_window');
 }
@@ -375,6 +389,8 @@ watchBtn.addEventListener('click', () => {
           if (type) {
             questionInput.value = text;
             questionInput.dispatchEvent(new Event('input'));
+            // Analytics: count auto-answer
+            if (typeof analytics !== 'undefined') analytics.increment('autoAnswers');
             // Auto-submit if detection is confident
             submitQuestion();
           }
@@ -473,6 +489,8 @@ async function importFiles(files) {
     if (text) {
       const chunks = modesManager.addFileText(modesManager.activeId, file.name, text);
       addMessage('assistant', `Imported ${file.name} (${chunks} chunks)`);
+      // Analytics: count file import
+      if (typeof analytics !== 'undefined') analytics.increment('filesImported');
       updateModeUI();
     }
   }
@@ -593,6 +611,177 @@ document.querySelectorAll('.settings-tabs .tab').forEach(tab => {
     if (tab.dataset.tab === 'modes') renderModeSettings();
   });
 });
+
+// ============= Feature: Stealth / Ghost mode =============
+
+const stealthSlider = document.getElementById('stealthSlider');
+const stealthValue = document.getElementById('stealthValue');
+const answerOverlay = document.getElementById('answerOverlay');
+
+function applyStealthOpacity(val) {
+  const opacity = parseFloat(val);
+  answerOverlay.style.opacity = opacity;
+  // Apply to all chat message bubbles
+  document.querySelectorAll('.message .bubble').forEach(b => b.style.opacity = opacity);
+  stealthValue.textContent = opacity.toFixed(1);
+  stealthSlider.value = opacity;
+  localStorage.setItem('stealthOpacity', opacity);
+}
+
+stealthSlider.addEventListener('input', (e) => applyStealthOpacity(e.target.value));
+
+document.querySelectorAll('.stealth-preset').forEach(btn => {
+  btn.addEventListener('click', () => applyStealthOpacity(btn.dataset.val));
+});
+
+// Load saved stealth value
+const savedStealth = localStorage.getItem('stealthOpacity') || '1.0';
+applyStealthOpacity(savedStealth);
+
+// Hook into renderChat to re-apply opacity after messages render
+const _origRenderChat = renderChat;
+renderChat = function() {
+  _origRenderChat();
+  const opacity = parseFloat(localStorage.getItem('stealthOpacity') || '1.0');
+  if (opacity < 1.0) {
+    document.querySelectorAll('.message .bubble').forEach(b => b.style.opacity = opacity);
+  }
+};
+
+// ============= Feature: Lock popover =============
+
+const lockPopoverToggle = document.getElementById('lockPopoverToggle');
+lockPopoverToggle.checked = localStorage.getItem('lockPopover') === 'true';
+
+lockPopoverToggle.addEventListener('change', () => {
+  localStorage.setItem('lockPopover', lockPopoverToggle.checked);
+  if (isTauri) invoke('set_lock_popover', { locked: lockPopoverToggle.checked });
+});
+
+// Sync lock state to Rust on startup
+if (isTauri && lockPopoverToggle.checked) {
+  invoke('set_lock_popover', { locked: true });
+}
+
+// ============= Feature: Configurable copy mode =============
+
+const copyModeSelect = document.getElementById('copyModeSelect');
+copyModeSelect.value = localStorage.getItem('copyMode') || 'short';
+copyModeSelect.addEventListener('change', () => {
+  localStorage.setItem('copyMode', copyModeSelect.value);
+});
+
+// ============= Feature: Analytics =============
+
+const analytics = {
+  _key: 'driaAnalytics',
+  _defaults: { totalQueries: 0, screenshots: 0, autoAnswers: 0, filesImported: 0 },
+
+  load() {
+    try {
+      return { ...this._defaults, ...JSON.parse(localStorage.getItem(this._key) || '{}') };
+    } catch { return { ...this._defaults }; }
+  },
+  save(data) { localStorage.setItem(this._key, JSON.stringify(data)); },
+  increment(key) {
+    const data = this.load();
+    data[key] = (data[key] || 0) + 1;
+    this.save(data);
+    this.render();
+  },
+  reset() {
+    this.save({ ...this._defaults });
+    this.render();
+  },
+  render() {
+    const data = this.load();
+    document.getElementById('statQueries').textContent = data.totalQueries;
+    document.getElementById('statScreenshots').textContent = data.screenshots;
+    document.getElementById('statAutoAnswers').textContent = data.autoAnswers;
+    document.getElementById('statFiles').textContent = data.filesImported;
+  }
+};
+
+document.getElementById('resetStatsBtn').addEventListener('click', () => analytics.reset());
+analytics.render();
+
+// ============= Feature: Debug log export =============
+
+document.getElementById('exportLogsBtn').addEventListener('click', () => {
+  const data = analytics.load();
+  const modes = modesManager.modes;
+  const totalFiles = modes.reduce((sum, m) => sum + m.files.length, 0);
+  const log = [
+    'dria Desktop — Debug Log',
+    '========================',
+    `Date: ${new Date().toISOString()}`,
+    `Version: 1.0.0`,
+    `Provider: ${state.provider}`,
+    `Model: ${state.model}`,
+    `API Key: ${state.apiKey ? 'set (' + state.apiKey.length + ' chars)' : 'not set'}`,
+    `Modes: ${modes.length}`,
+    `Files across modes: ${totalFiles}`,
+    `Messages in current chat: ${state.messages.length}`,
+    `Browser: ${navigator.userAgent}`,
+    `Platform: ${navigator.platform}`,
+    `Tauri: ${isTauri ? 'yes' : 'no'}`,
+    `Stealth opacity: ${localStorage.getItem('stealthOpacity') || '1.0'}`,
+    `Lock popover: ${localStorage.getItem('lockPopover') || 'false'}`,
+    `Copy mode: ${localStorage.getItem('copyMode') || 'short'}`,
+    '',
+    'Analytics:',
+    `  Total queries: ${data.totalQueries}`,
+    `  Screenshots: ${data.screenshots}`,
+    `  Auto answers: ${data.autoAnswers}`,
+    `  Files imported: ${data.filesImported}`,
+    '',
+    'Modes:',
+    ...modes.map(m => `  ${m.icon} ${m.name} (${m.files.length} files)`),
+  ].join('\n');
+
+  const blob = new Blob([log], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dria-debug-${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ============= Feature: Bug report button =============
+
+document.getElementById('reportBugBtn').addEventListener('click', () => {
+  const url = 'https://github.com/CelestialBrain/dria/issues/new';
+  if (isTauri) {
+    window.__TAURI__?.shell?.open(url);
+  } else {
+    window.open(url, '_blank');
+  }
+});
+
+// ============= Feature: Launch at login =============
+
+const launchAtLoginToggle = document.getElementById('launchAtLoginToggle');
+
+async function loadAutoStartState() {
+  if (!isTauri) return;
+  try {
+    const enabled = await invoke('get_autostart');
+    launchAtLoginToggle.checked = enabled;
+  } catch {}
+}
+
+launchAtLoginToggle.addEventListener('change', async () => {
+  if (!isTauri) return;
+  try {
+    await invoke('set_autostart', { enabled: launchAtLoginToggle.checked });
+  } catch (err) {
+    console.error('Failed to set autostart:', err);
+    launchAtLoginToggle.checked = !launchAtLoginToggle.checked;
+  }
+});
+
+loadAutoStartState();
 
 // ============= Init =============
 

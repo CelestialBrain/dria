@@ -3,6 +3,8 @@ use tauri::{
     Manager,
 };
 use base64::Engine;
+use tauri_plugin_autostart::MacosLauncher;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[tauri::command]
 fn capture_screen() -> Result<String, String> {
@@ -40,6 +42,34 @@ fn read_file_text(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", path, e))
 }
 
+// Lock popover — global atomic flag
+static POPOVER_LOCKED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn set_lock_popover(locked: bool) {
+    POPOVER_LOCKED.store(locked, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn get_autostart(app_handle: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app_handle
+        .autolaunch()
+        .is_enabled()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_autostart(app_handle: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app_handle.autolaunch();
+    if enabled {
+        autostart.enable().map_err(|e| e.to_string())
+    } else {
+        autostart.disable().map_err(|e| e.to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -48,6 +78,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--flag1"])))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -67,6 +98,10 @@ pub fn run() {
                         button_state: MouseButtonState::Up,
                         ..
                     } = event {
+                        // Respect lock popover setting
+                        if POPOVER_LOCKED.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
@@ -87,6 +122,9 @@ pub fn run() {
             get_clipboard_text,
             set_clipboard_text,
             read_file_text,
+            set_lock_popover,
+            get_autostart,
+            set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

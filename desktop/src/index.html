@@ -145,6 +145,48 @@
           <option value="short">Short answer only</option>
           <option value="full">Full explanation</option>
         </select>
+
+        <!-- Stealth / Ghost mode -->
+        <label>Stealth Opacity</label>
+        <div class="stealth-slider-row">
+          <input type="range" id="stealthSlider" min="0.1" max="1.0" step="0.1" value="1.0">
+          <span id="stealthValue" class="stealth-value">1.0</span>
+        </div>
+        <div class="stealth-presets">
+          <button class="stealth-preset" data-val="0.1">Ghost</button>
+          <button class="stealth-preset" data-val="0.3">Faint</button>
+          <button class="stealth-preset" data-val="0.6">Subtle</button>
+          <button class="stealth-preset" data-val="1.0">Full</button>
+        </div>
+
+        <!-- Lock popover -->
+        <div class="toggle-row">
+          <label>Lock chat window</label>
+          <input type="checkbox" id="lockPopoverToggle">
+        </div>
+
+        <!-- Launch at login -->
+        <div class="toggle-row">
+          <label>Launch at login</label>
+          <input type="checkbox" id="launchAtLoginToggle">
+        </div>
+
+        <!-- Analytics -->
+        <div class="analytics-box" id="analyticsBox">
+          <h4>Usage Stats</h4>
+          <div class="stat-row"><span>Total queries</span><span id="statQueries">0</span></div>
+          <div class="stat-row"><span>Screenshots</span><span id="statScreenshots">0</span></div>
+          <div class="stat-row"><span>Auto answers</span><span id="statAutoAnswers">0</span></div>
+          <div class="stat-row"><span>Files imported</span><span id="statFiles">0</span></div>
+          <button class="secondary-btn" id="resetStatsBtn" style="margin-top:6px;width:100%">Reset Stats</button>
+        </div>
+
+        <!-- Debug log export -->
+        <button class="secondary-btn" id="exportLogsBtn" style="margin-top:10px;width:100%">Export Debug Logs</button>
+
+        <!-- Bug report -->
+        <button class="secondary-btn" id="reportBugBtn" style="margin-top:6px;width:100%">Report Bug</button>
+
         <div style="margin-top:16px;color:var(--text-tertiary);font-size:11px">dria desktop v1.0.0</div>
       </div>
     </div>
