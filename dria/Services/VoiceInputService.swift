@@ -39,10 +39,8 @@ final class VoiceInputService {
 
     init() {
         recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-        // Pre-warm: request permission at init so it's ready when user taps mic
-        Task {
-            permissionGranted = await requestPermission()
-        }
+        // Don't request permission at init — causes TCC crash on fresh install
+        // Permission will be requested when user first taps mic
     }
 
     func setLanguage(_ localeId: String) {
