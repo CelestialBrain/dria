@@ -7,6 +7,27 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.6.4</title>
+            <description><![CDATA[
+                <h2>dria v1.6.4</h2>
+                <ul>
+                    <li>Per-mode chat history</li>
+                    <li>Permanent fix for 100% CPU render loop</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 09:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.6.4/dria-v1.6.4.dmg"
+                sparkle:version="10"
+                sparkle:shortVersionString="1.6.4"
+                length="2804391"
+                type="application/octet-stream"
+                sparkle:edSignature="C/TONOqkAq6XVVMofPPrZ61RXuZx4V0+Ogp3uZBW3uVanMUnPQjLimdZ3MK64ZFIMxYsF5SuyHy5FlFPailiDQ=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.6.3</title>
             <description><![CDATA[
                 <h2>dria v1.6.3</h2>
