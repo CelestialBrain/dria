@@ -69,7 +69,7 @@ struct PopoverView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .disabled(appState.chatHistory.isEmpty)
+                .opacity(appState.chatHistory.isEmpty ? 0.3 : 1.0)
 
                 SettingsLink {
                     Image(systemName: "gear")
@@ -103,15 +103,16 @@ struct PopoverView: View {
 
             Divider()
 
-            // Chat area
+            // Chat area — reads chatUpdateTrigger (not chatHistory) to trigger refreshes
+            let _ = appState.chatUpdateTrigger
             if appState.chatHistory.isEmpty && !appState.isStreaming {
                 EmptyStateView(modeName: appState.activeMode.name)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            let messages = appState.chatHistory.suffix(30)
-                            ForEach(Array(messages), id: \.id) { message in
+                            let messages = Array(appState.chatHistory.suffix(20))
+                            ForEach(messages, id: \.id) { message in
                                 MessageBubble(message: message)
                             }
 
@@ -130,7 +131,6 @@ struct PopoverView: View {
                                 .padding(.horizontal)
                             }
 
-                            // Invisible anchor at bottom
                             Color.clear.frame(height: 1).id("bottom")
                         }
                         .padding(.horizontal, 8)
@@ -139,7 +139,7 @@ struct PopoverView: View {
                     .onAppear {
                         proxy.scrollTo("bottom", anchor: .bottom)
                     }
-                    .onChange(of: appState.chatHistory.count) {
+                    .onChange(of: appState.chatUpdateTrigger) {
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }

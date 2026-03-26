@@ -55,8 +55,23 @@ final class AppState {
     var currentResponse: String = ""
     var isStreaming: Bool = false
     var isVoiceListening: Bool = false
+    @ObservationIgnored
     var chatHistory: [ChatMessage] = []
+    /// Change this to refresh chat views. Use notifyChatChanged() — never set directly from button actions.
+    var chatUpdateTrigger: UUID = UUID()
     var errorMessage: String?
+
+    /// Safely notify SwiftUI that chat changed — debounced, never called from gesture handlers
+    @ObservationIgnored
+    private var chatNotifyScheduled = false
+    func notifyChatChanged() {
+        guard !chatNotifyScheduled else { return }
+        chatNotifyScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.chatNotifyScheduled = false
+            self?.chatUpdateTrigger = UUID()
+        }
+    }
 
     // MARK: - Stealth Mode
     var capturedImage: NSImage?
@@ -412,6 +427,7 @@ final class AppState {
         if let data = try? JSONEncoder().encode(toSave) {
             UserDefaults.standard.set(data, forKey: key)
         }
+        notifyChatChanged()
     }
 
     private func loadChatHistory(for modeId: UUID) -> [ChatMessage] {
@@ -835,6 +851,7 @@ final class AppState {
 
         let userMessage = ChatMessage(role: .user, content: question)
         chatHistory.append(userMessage)
+        notifyChatChanged()
         currentQuestion = ""
 
         // Include clipboard text as extra context — skip NSImage read to avoid TCC crash
@@ -853,11 +870,19 @@ final class AppState {
         var assistantMessage = ChatMessage(role: .assistant, content: "", referencedSources: sourceFiles)
 
         do {
+            var buffer = ""
+            var lastUIUpdate = Date()
             let stream = gemini.ask(question: question, context: contextString, history: chatHistory)
             for try await chunk in stream {
-                currentResponse += chunk
+                buffer += chunk
+                // Throttle UI updates to 5x per second max
+                let now = Date()
+                if now.timeIntervalSince(lastUIUpdate) > 0.2 {
+                    currentResponse = buffer
+                    lastUIUpdate = now
+                }
             }
-            currentResponse = stripMarkdown(currentResponse)
+            currentResponse = stripMarkdown(buffer)
             assistantMessage.content = currentResponse
         } catch {
             let errMsg = error.localizedDescription
@@ -875,6 +900,7 @@ final class AppState {
         chatHistory.removeAll()
         AttachmentCache.shared.clear()
         UserDefaults.standard.removeObject(forKey: chatKey(for: activeModeId))
+        notifyChatChanged()
         currentResponse = ""
         currentQuestion = ""
         errorMessage = nil
@@ -975,10 +1001,17 @@ final class AppState {
         chatHistory.append(msg)
 
         do {
+            var buffer = ""
+            var lastUI = Date()
             let stream = gemini.ask(question: prompt, context: context, history: [])
-            for try await chunk in stream { currentResponse += chunk }
-            currentResponse = stripMarkdown(currentResponse)
+            for try await chunk in stream {
+                buffer += chunk
+                let now = Date()
+                if now.timeIntervalSince(lastUI) > 0.2 { currentResponse = buffer; lastUI = now }
+            }
+            currentResponse = stripMarkdown(buffer)
             chatHistory.append(ChatMessage(role: .assistant, content: currentResponse))
+            notifyChatChanged()
         } catch {
             errorMessage = error.localizedDescription
         }
