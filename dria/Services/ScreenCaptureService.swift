@@ -147,6 +147,57 @@ struct ScreenCaptureService {
         return NSImage(cgImage: result, size: imageSize)
     }
 
+    /// Capture region around cursor — invisible, no UI, instant
+    /// Captures a ~800x600 area centered on the mouse cursor
+    func captureAroundCursor(width: CGFloat = 800, height: CGFloat = 600) async -> (image: NSImage?, error: String?) {
+        let tempFile = NSTemporaryDirectory() + "dria_hover_\(UUID().uuidString).png"
+
+        // Get mouse position
+        guard let mouseLocation = CGEvent(source: nil)?.location else {
+            return (nil, "Could not get mouse position")
+        }
+
+        // Calculate capture rect centered on cursor
+        guard let mainScreen = NSScreen.main else {
+            return (nil, "No main screen")
+        }
+        let screenFrame = mainScreen.frame
+
+        let x = max(0, mouseLocation.x - width / 2)
+        let y = max(0, mouseLocation.y - height / 2)
+        let w = min(width, screenFrame.width - x)
+        let h = min(height, screenFrame.height - y)
+        let rect = "-R\(Int(x)),\(Int(y)),\(Int(w)),\(Int(h))"
+
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                process.arguments = ["-x", rect, tempFile]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    continuation.resume(returning: (nil, "screencapture failed: \(error.localizedDescription)"))
+                    return
+                }
+
+                guard process.terminationStatus == 0,
+                      FileManager.default.fileExists(atPath: tempFile),
+                      let image = NSImage(contentsOfFile: tempFile) else {
+                    continuation.resume(returning: (nil, "Hover capture failed — grant Screen Recording permission"))
+                    return
+                }
+
+                try? FileManager.default.removeItem(atPath: tempFile)
+                continuation.resume(returning: (image, nil))
+            }
+        }
+    }
+
     /// Interactive screen capture (user selects area) — saves to file to avoid Clop interception
     func captureInteractive() async -> NSImage? {
         let tempFile = NSTemporaryDirectory() + "dria_select_\(UUID().uuidString).png"

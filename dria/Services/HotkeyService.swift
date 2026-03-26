@@ -47,14 +47,16 @@ struct HotkeyConfig: Codable {
     var sendToAI: HotkeyBinding    // Default: ⌘⌥2
     var inlineChat: HotkeyBinding  // Default: ⌘⌥3
     var cycleMode: HotkeyBinding   // Default: ⌘⌥0
-    var abort: HotkeyBinding       // Default: ⌘⌥Space
+    var abort: HotkeyBinding       // Default: ⌘⌥←
+    var hoverCapture: HotkeyBinding // Default: ⌘⌥4 — capture around cursor + send
 
     static let defaults = HotkeyConfig(
         capture: .key1,
         sendToAI: .key2,
         inlineChat: .key3,
         cycleMode: .key0,
-        abort: .leftArrow
+        abort: .leftArrow,
+        hoverCapture: .key4
     )
 
     static func load() -> HotkeyConfig {
@@ -89,6 +91,7 @@ private func hotkeyHandler(nextHandler: EventHandlerCallRef?, event: EventRef?, 
         case 3: hotkeyServiceInstance?.onOpenPopover?()
         case 4: hotkeyServiceInstance?.onToggleMode?()
         case 5: hotkeyServiceInstance?.onAbort?()
+        case 6: hotkeyServiceInstance?.onHoverCapture?()
         default: break
         }
     }
@@ -102,6 +105,7 @@ final class HotkeyService {
     var onOpenPopover: (() -> Void)?
     var onToggleMode: (() -> Void)?
     var onAbort: (() -> Void)?
+    var onHoverCapture: (() -> Void)?
     private var hotKeyRefs: [EventHotKeyRef?] = []
     private var eventHandlerRef: EventHandlerRef?
 
@@ -128,11 +132,12 @@ final class HotkeyService {
             hotKeyRefs.append(ref)
         }
 
-        reg(config.capture.keyCode, 1)     // Capture
-        reg(config.sendToAI.keyCode, 2)    // Send to AI
-        reg(config.inlineChat.keyCode, 3)  // Inline chat
-        reg(config.cycleMode.keyCode, 4)   // Cycle mode
-        reg(config.abort.keyCode, 5)       // Abort
+        reg(config.capture.keyCode, 1)         // Capture
+        reg(config.sendToAI.keyCode, 2)        // Send to AI
+        reg(config.inlineChat.keyCode, 3)      // Inline chat
+        reg(config.cycleMode.keyCode, 4)       // Cycle mode
+        reg(config.abort.keyCode, 5)           // Abort
+        reg(config.hoverCapture.keyCode, 6)    // Hover capture + send
     }
 
     func unregister() {

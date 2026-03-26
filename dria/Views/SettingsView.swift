@@ -685,6 +685,31 @@ private struct GeneralSettingsTab: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Section("Hover Capture (⌘⌥4)") {
+                Text("Captures area around your cursor and sends to AI instantly. No visible UI.")
+                    .font(.caption).foregroundStyle(.secondary)
+
+                HStack {
+                    Text("Width")
+                    Slider(value: $state.hoverCaptureWidth, in: 400...1600, step: 100)
+                    Text("\(Int(state.hoverCaptureWidth))px")
+                        .monospacedDigit().frame(width: 50)
+                }
+                HStack {
+                    Text("Height")
+                    Slider(value: $state.hoverCaptureHeight, in: 300...1200, step: 100)
+                    Text("\(Int(state.hoverCaptureHeight))px")
+                        .monospacedDigit().frame(width: 50)
+                }
+
+                // Visual preview
+                HoverCapturePreview(
+                    width: state.hoverCaptureWidth,
+                    height: state.hoverCaptureHeight
+                )
+                .frame(height: 120)
+            }
+
             Section("Auto-detect") {
                 Toggle("Auto-detect mode from window title", isOn: $state.autoDetectMode)
                 Text("Matches window titles against each mode's keywords.")
@@ -857,6 +882,64 @@ private struct GeneralSettingsTab: View {
         panel.allowedContentTypes = [.plainText]
         if panel.runModal() == .OK, let dest = panel.url {
             try? log.write(to: dest, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
+// MARK: - Hover Capture Preview
+
+private struct HoverCapturePreview: View {
+    let width: Double
+    let height: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let screenW: CGFloat = 1440
+            let screenH: CGFloat = 900
+            let previewScale = min(geo.size.width / screenW, geo.size.height / screenH)
+            let pw = screenW * previewScale
+            let ph = screenH * previewScale
+            let cw = width * previewScale
+            let ch = height * previewScale
+
+            ZStack {
+                // Screen background
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: pw, height: ph)
+
+                // Fake content lines
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(0..<8) { i in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(width: pw * (i % 3 == 0 ? 0.6 : 0.8), height: 3)
+                    }
+                }
+
+                // Capture zone
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.red, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .background(Color.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .frame(width: cw, height: ch)
+
+                // Cursor crosshair at center
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.red)
+
+                // Label
+                VStack {
+                    Spacer()
+                    Text("\(Int(width)) × \(Int(height))")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 2)
+                }
+                .frame(width: cw, height: ch)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 }

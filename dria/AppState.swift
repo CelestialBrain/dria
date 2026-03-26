@@ -120,6 +120,14 @@ final class AppState {
         didSet { UserDefaults.standard.set(marqueeOpacity, forKey: "marqueeOpacity") }
     }
 
+    /// Hover capture dimensions
+    var hoverCaptureWidth: Double = 800 {
+        didSet { UserDefaults.standard.set(hoverCaptureWidth, forKey: "hoverCaptureWidth") }
+    }
+    var hoverCaptureHeight: Double = 600 {
+        didSet { UserDefaults.standard.set(hoverCaptureHeight, forKey: "hoverCaptureHeight") }
+    }
+
     /// Audio source for voice input
     var audioSource: AudioSource = .mic {
         didSet {
@@ -303,6 +311,8 @@ final class AppState {
         marqueeWidth = UserDefaults.standard.object(forKey: "marqueeWidth") as? Int ?? 30
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
+        hoverCaptureWidth = UserDefaults.standard.object(forKey: "hoverCaptureWidth") as? Double ?? 800
+        hoverCaptureHeight = UserDefaults.standard.object(forKey: "hoverCaptureHeight") as? Double ?? 600
         audioSource = AudioSource(rawValue: UserDefaults.standard.string(forKey: "audioSource") ?? "Microphone") ?? .mic
         voice.audioSource = audioSource
         copyMode = UserDefaults.standard.string(forKey: "copyMode") ?? "short"
@@ -344,8 +354,13 @@ final class AppState {
         }
 
         clipboard.detector.sensitivity = DetectionSensitivity(rawValue: detectionSensitivity) ?? .normal
-        // Don't auto-start monitoring — user clicks "Watching" button
-        // This prevents TCC clipboard access crash on launch
+
+        // Start monitoring after 5s delay if user had it enabled — avoids TCC crash at startup
+        if autoMonitorClipboard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.clipboard.startMonitoring()
+            }
+        }
     }
 
     /// Auto-answer a detected question from clipboard
@@ -620,7 +635,34 @@ final class AppState {
         hotkey.onAbort = { [weak self] in
             self?.onAbort?()
         }
+        hotkey.onHoverCapture = { [weak self] in
+            Task { [weak self] in
+                await self?.handleHoverCapture()
+            }
+        }
         hotkey.register()
+    }
+
+    // MARK: - Hover Capture (⌘⌥4)
+
+    /// Captures 800x600 region around cursor, sends to AI immediately — completely invisible
+    func handleHoverCapture() async {
+        guard !isProcessing else { return }
+        AnalyticsService.shared.track(.screenshot)
+        onIconColorChange?("blue")
+
+        let result = await screenCapture.captureAroundCursor(width: hoverCaptureWidth, height: hoverCaptureHeight)
+        guard let image = result.image else {
+            onMarqueeUpdate?(result.error ?? "Hover capture failed")
+            onIconColorChange?("red")
+            return
+        }
+
+        // Mark cursor position on the captured region
+        capturedImage = screenCapture.markCursorPosition(on: image)
+
+        // Send immediately — no second hotkey needed
+        await sendCapturedToAI()
     }
 
     // MARK: - Stealth Actions
