@@ -645,7 +645,7 @@ private struct GeneralSettingsTab: View {
                 ))
 
                 HStack {
-                    if appState.updateChecker.isChecking {
+                    if !appState.updateChecker.canCheckForUpdates {
                         ProgressView().controlSize(.small)
                         Text("Checking...").font(.caption)
                     } else if appState.updateChecker.updateAvailable {
@@ -669,7 +669,7 @@ private struct GeneralSettingsTab: View {
                         appState.updateChecker.checkForUpdates()
                     }
                     .controlSize(.small)
-                    .disabled(appState.updateChecker.isChecking)
+                    .disabled(!appState.updateChecker.canCheckForUpdates)
                 }
             }
 

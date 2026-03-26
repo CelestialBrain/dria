@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>DRIA Updates</title>
+        <link>https://celestialbrain.github.io/dria/appcast.xml</link>
+        <description>Most recent updates to DRIA</description>
+        <language>en</language>
+
+        <!-- Latest release -->
+        <item>
+            <title>Version 1.5.0</title>
+            <description><![CDATA[
+                <h2>DRIA v1.5.0</h2>
+                <ul>
+                    <li>Sparkle auto-updater integration</li>
+                    <li>Voice input support</li>
+                    <li>Answer caching</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 00:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+
+            <!-- IMPORTANT: Update these values for each release -->
+            <!--
+                To generate a new entry:
+                1. Build the release .dmg or .zip
+                2. Run: ./Sparkle.framework/bin/generate_appcast /path/to/your/releases/
+                   OR manually fill in:
+                   - url: Direct download URL for the .dmg/.zip
+                   - sparkle:version: CFBundleVersion (build number), e.g. "5"
+                   - sparkle:shortVersionString: Marketing version, e.g. "1.5.0"
+                   - length: File size in bytes
+                   - sparkle:edSignature: EdDSA signature from sign_update tool
+            -->
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.5.0/dria-1.5.0.dmg"
+                sparkle:version="5"
+                sparkle:shortVersionString="1.5.0"
+                length="0"
+                type="application/octet-stream"
+                sparkle:edSignature="REPLACE_WITH_EDDSA_SIGNATURE"
+            />
+        </item>
+
+        <!-- Template for future releases — copy and fill in -->
+        <!--
+        <item>
+            <title>Version X.Y.Z</title>
+            <description><![CDATA[
+                <h2>DRIA vX.Y.Z</h2>
+                <ul>
+                    <li>Change 1</li>
+                    <li>Change 2</li>
+                </ul>
+            ]]></description>
+            <pubDate>Day, DD Mon YYYY HH:MM:SS +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/vX.Y.Z/dria-X.Y.Z.dmg"
+                sparkle:version="BUILD_NUMBER"
+                sparkle:shortVersionString="X.Y.Z"
+                length="FILE_SIZE_BYTES"
+                type="application/octet-stream"
+                sparkle:edSignature="EDDSA_SIGNATURE"
+            />
+        </item>
+        -->
+
+    </channel>
+</rss>

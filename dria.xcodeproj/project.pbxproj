@@ -66,6 +66,7 @@
 			name = dria;
 			packageProductDependencies = (
 				14832FD02F5F300000ACCB89 /* GoogleGenerativeAI */,
+				14SPARKLE012F60000000ACC0 /* Sparkle */,
 			);
 			productName = dria;
 			productReference = 14832FBC2F5F229B00ACCB89 /* dria.app */;
@@ -101,6 +102,7 @@
 			projectRoot = "";
 			packageReferences = (
 				14832FCF2F5F300000ACCB89 /* XCRemoteSwiftPackageReference "generative-ai-swift" */,
+				14SPARKLE002F60000000ACC0 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			targets = (
 				14832FBB2F5F229B00ACCB89 /* dria */,
@@ -265,6 +267,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "dria uses the microphone for voice input to transcribe speech to text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "dria uses speech recognition to transcribe your voice for AI queries.";
+				INFOPLIST_KEY_SUFeedURL = "https://celestialbrain.github.io/dria/appcast.xml";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -300,6 +303,7 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "dria uses the microphone for voice input to transcribe speech to text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "dria uses speech recognition to transcribe your voice for AI queries.";
+				INFOPLIST_KEY_SUFeedURL = "https://celestialbrain.github.io/dria/appcast.xml";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -349,6 +353,14 @@
 				kind = branch;
 			};
 		};
+		14SPARKLE002F60000000ACC0 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -356,6 +368,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 14832FCF2F5F300000ACCB89 /* XCRemoteSwiftPackageReference "generative-ai-swift" */;
 			productName = GoogleGenerativeAI;
+		};
+		14SPARKLE012F60000000ACC0 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 14SPARKLE002F60000000ACC0 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -2,29 +2,27 @@
 //  UpdateChecker.swift
 //  dria
 //
-//  Checks GitHub releases API for new versions. No redirect — shows in-app.
+//  Manages app updates via Sparkle framework.
 
 import AppKit
 import ServiceManagement
+import Sparkle
 
 @Observable
 @MainActor
-final class UpdateChecker {
-    private static let repoURL = "https://api.github.com/repos/CelestialBrain/dria/releases/latest"
-    private static let releasesPage = "https://github.com/CelestialBrain/dria/releases"
+final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
 
-    var canCheckForUpdates: Bool = true
+    // MARK: - Observable State
+
+    var canCheckForUpdates: Bool = false
     var updateAvailable: Bool = false
     var latestVersion: String = ""
-    var downloadURL: String = ""
-    var releaseNotes: String = ""
     var isChecking: Bool = false
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
 
-    /// Launch at login — stored property so @Observable tracks it
     var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled {
         didSet {
             do {
@@ -34,90 +32,73 @@ final class UpdateChecker {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                // Revert on failure
                 launchAtLogin = SMAppService.mainApp.status == .enabled
             }
         }
     }
 
-    init() {
-        // Auto-check on launch (after 5s delay to not block startup)
-        Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            await checkForUpdatesQuietly()
+    // MARK: - Sparkle (not tracked by @Observable)
+
+    @ObservationIgnored
+    private var updaterController: SPUStandardUpdaterController!
+
+    @ObservationIgnored
+    private var canCheckObservation: NSKeyValueObservation?
+
+    // MARK: - Init
+
+    override init() {
+        super.init()
+
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: self,
+            userDriverDelegate: nil
+        )
+
+        // Mirror Sparkle's KVO property to our @Observable
+        canCheckObservation = updaterController.updater.observe(
+            \.canCheckForUpdates,
+            options: [.initial, .new]
+        ) { [weak self] updater, _ in
+            let value = updater.canCheckForUpdates
+            Task { @MainActor in
+                self?.canCheckForUpdates = value
+            }
         }
+
+        updaterController.updater.updateCheckInterval = 4 * 60 * 60
+        updaterController.updater.automaticallyChecksForUpdates = true
     }
 
-    /// Silent check — no UI unless update found
-    func checkForUpdatesQuietly() async {
-        await fetchLatestRelease()
+    deinit {
+        canCheckObservation?.invalidate()
     }
 
-    /// Manual check — shows status
+    // MARK: - Public API
+
     func checkForUpdates() {
-        isChecking = true
-        Task {
-            await fetchLatestRelease()
-            isChecking = false
-        }
+        updaterController.checkForUpdates(nil)
     }
 
-    /// Download the latest DMG directly
     func downloadUpdate() {
-        guard !downloadURL.isEmpty, let url = URL(string: downloadURL) else {
-            // Fallback to releases page
-            if let url = URL(string: Self.releasesPage) {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        NSWorkspace.shared.open(url)
+        updaterController.checkForUpdates(nil)
     }
 
-    // MARK: - Private
+    // MARK: - SPUUpdaterDelegate
 
-    private func fetchLatestRelease() async {
-        guard let url = URL(string: Self.repoURL) else { return }
-
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-
-            guard let tagName = json["tag_name"] as? String else { return }
-            let version = tagName.replacingOccurrences(of: "v", with: "")
-
-            latestVersion = version
-            releaseNotes = (json["body"] as? String ?? "").prefix(500).description
-
-            // Find DMG asset
-            if let assets = json["assets"] as? [[String: Any]] {
-                for asset in assets {
-                    if let name = asset["name"] as? String, name.hasSuffix(".dmg"),
-                       let url = asset["browser_download_url"] as? String {
-                        downloadURL = url
-                        break
-                    }
-                }
-            }
-
-            // Compare versions
-            updateAvailable = isNewer(latestVersion, than: currentVersion)
-
-        } catch {
-            // Silent fail — don't bother user
+    nonisolated func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        Task { @MainActor in
+            self.updateAvailable = true
+            self.latestVersion = item.displayVersionString ?? item.versionString
+            self.isChecking = false
         }
     }
 
-    private func isNewer(_ remote: String, than local: String) -> Bool {
-        let r = remote.split(separator: ".").compactMap { Int($0) }
-        let l = local.split(separator: ".").compactMap { Int($0) }
-        for i in 0..<max(r.count, l.count) {
-            let rv = i < r.count ? r[i] : 0
-            let lv = i < l.count ? l[i] : 0
-            if rv > lv { return true }
-            if rv < lv { return false }
+    nonisolated func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
+        Task { @MainActor in
+            self.updateAvailable = false
+            self.isChecking = false
         }
-        return false
     }
 }
