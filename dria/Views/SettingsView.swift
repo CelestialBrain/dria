@@ -552,86 +552,8 @@ private struct CustomizationTab: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Troubleshooting") {
-                Button("Export Debug Logs") {
-                    exportDebugLogs()
-                }
-                Text("Saves app settings, crash info, and system details to a file you can share for support.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
-    }
-
-    private func exportDebugLogs() {
-        var log = "=== dria Debug Log ===\n"
-        log += "Date: \(Date())\n"
-        log += "Version: \(appState.updateChecker.currentVersion)\n"
-        log += "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
-        log += "Chip: \(ProcessInfo.processInfo.processorCount) cores\n\n"
-
-        // Settings
-        log += "=== Settings ===\n"
-        log += "Provider: \(appState.aiProvider)\n"
-        log += "Model: \(appState.selectedModel)\n"
-        log += "Has API Key: \(appState.hasAPIKey)\n"
-        log += "Has Service Account: \(appState.hasServiceAccount)\n"
-        log += "Vertex Project: \(appState.vertexProject)\n"
-        log += "Active Mode: \(appState.activeMode.name)\n"
-        log += "Modes: \(appState.modes.map { "\($0.name) (\($0.files.count) files)" }.joined(separator: ", "))\n"
-        log += "Auto Monitor: \(appState.autoMonitorClipboard)\n"
-        log += "Auto Answer: \(appState.autoAnswerOnCopy)\n"
-        log += "Detection Sensitivity: \(appState.detectionSensitivity)\n"
-        log += "Capture Workflow: \(appState.captureWorkflow)\n"
-        log += "Language: \(appState.responseLanguage)\n"
-        log += "Marquee Width: \(appState.marqueeWidth)\n"
-        log += "Lock Popover: \(appState.lockPopover)\n\n"
-
-        // Chat history summary
-        log += "=== Chat History ===\n"
-        log += "Messages: \(appState.chatHistory.count)\n"
-        if let last = appState.chatHistory.last {
-            log += "Last message: \(last.role == .user ? "user" : "assistant") (\(last.content.prefix(100))...)\n"
-        }
-        log += "\n"
-
-        // Analytics
-        log += "=== Analytics ===\n"
-        log += AnalyticsService.shared.exportSummary()
-        log += "\n\n"
-
-        // Recent crash reports
-        log += "=== Recent Crashes ===\n"
-        let reportsDir = NSHomeDirectory() + "/Library/Logs/DiagnosticReports"
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: reportsDir) {
-            let driaFiles = files.filter { $0.lowercased().contains("dria") }.sorted().suffix(3)
-            if driaFiles.isEmpty {
-                log += "No crash reports found.\n"
-            } else {
-                for file in driaFiles {
-                    log += "- \(file)\n"
-                    if let content = try? String(contentsOfFile: reportsDir + "/" + file, encoding: .utf8) {
-                        // Extract just the first line (JSON header with exception info)
-                        if let firstLine = content.components(separatedBy: "\n").first, firstLine.count < 500 {
-                            log += "  \(firstLine)\n"
-                        }
-                    }
-                }
-            }
-        }
-        log += "\n"
-
-        // Errors
-        log += "=== Last Error ===\n"
-        log += appState.errorMessage ?? "None\n"
-
-        // Save to file
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "dria-debug-\(Date().formatted(.dateTime.year().month().day())).txt"
-        panel.allowedContentTypes = [.plainText]
-        if panel.runModal() == .OK, let dest = panel.url {
-            try? log.write(to: dest, atomically: true, encoding: .utf8)
-        }
     }
 
     private func opacityLabel(_ v: Double) -> String {
@@ -883,7 +805,53 @@ private struct GeneralSettingsTab: View {
                     }
                 }
             }
+
+            Section("Troubleshooting") {
+                Button("Export Debug Logs") {
+                    exportDebugLogs()
+                }
+                Text("Saves app settings, crash info, and system details to a file you can share for support.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private func exportDebugLogs() {
+        var log = "=== dria Debug Log ===\n"
+        log += "Date: \(Date())\n"
+        log += "Version: \(appState.updateChecker.currentVersion)\n"
+        log += "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
+
+        log += "=== Settings ===\n"
+        log += "Provider: \(appState.aiProvider)\n"
+        log += "Model: \(appState.selectedModel)\n"
+        log += "Has API Key: \(appState.hasAPIKey)\n"
+        log += "Has Service Account: \(appState.hasServiceAccount)\n"
+        log += "Active Mode: \(appState.activeMode.name)\n"
+        log += "Modes: \(appState.modes.map { "\($0.name) (\($0.files.count) files)" }.joined(separator: ", "))\n"
+        log += "Messages: \(appState.chatHistory.count)\n\n"
+
+        log += "=== Analytics ===\n"
+        log += AnalyticsService.shared.exportSummary()
+        log += "\n\n"
+
+        log += "=== Recent Crashes ===\n"
+        let reportsDir = NSHomeDirectory() + "/Library/Logs/DiagnosticReports"
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: reportsDir) {
+            let driaFiles = files.filter { $0.lowercased().contains("dria") }.sorted().suffix(3)
+            for file in driaFiles { log += "- \(file)\n" }
+            if driaFiles.isEmpty { log += "None\n" }
+        }
+
+        log += "\n=== Last Error ===\n"
+        log += appState.errorMessage ?? "None\n"
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "dria-debug.txt"
+        panel.allowedContentTypes = [.plainText]
+        if panel.runModal() == .OK, let dest = panel.url {
+            try? log.write(to: dest, atomically: true, encoding: .utf8)
+        }
     }
 }
