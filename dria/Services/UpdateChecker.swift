@@ -78,11 +78,7 @@ final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
 
     override init() {
         super.init()
-
-        // Start Sparkle after a delay — avoids TCC crash on launch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
-            _ = self?.updaterController
-        }
+        // Don't init Sparkle here — init on first "Check for Updates" click only
     }
 
     deinit {

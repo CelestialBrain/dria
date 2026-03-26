@@ -950,7 +950,8 @@ final class AppState {
 
     func generatePracticeQuestion() async {
         guard let gemini = getOrCreateGemini() else { return }
-        let context = knowledgeBase?.buildContext(for: "practice question").contextString ?? ""
+        var context = knowledgeBase?.buildContext(for: "practice question exam").contextString ?? ""
+        if context.count > 3000 { context = String(context.prefix(3000)) }
         let prompt = "Generate ONE practice exam question based on the study materials. Vary the type (MC, T/F, essay, identification). Give ONLY the question, not the answer."
 
         isStreaming = true
@@ -974,7 +975,9 @@ final class AppState {
 
     func generateFlashcards(count: Int = 10) async -> [(front: String, back: String)] {
         guard let gemini = getOrCreateGemini() else { return [] }
-        let context = knowledgeBase?.buildContext(for: "flashcards key concepts").contextString ?? ""
+        // Limit context to 3000 chars to avoid timeout with large knowledge bases
+        var context = knowledgeBase?.buildContext(for: "flashcards key concepts definitions rules").contextString ?? ""
+        if context.count > 3000 { context = String(context.prefix(3000)) }
         let prompt = """
         Generate \(count) flashcards from the study materials. Format each as:
         Q: [question/term]
