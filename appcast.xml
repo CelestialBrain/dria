@@ -7,6 +7,29 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.0</title>
+            <description><![CDATA[
+                <h2>dria v1.7.0</h2>
+                <ul>
+                    <li>Voice input stable with segment accumulation</li>
+                    <li>Desktop audio capture via ScreenCaptureKit</li>
+                    <li>Bug report button with GitHub Issues template</li>
+                    <li>Multiple TCC crash fixes</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 12:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.7.0/dria-v1.7.0.dmg"
+                sparkle:version="11"
+                sparkle:shortVersionString="1.7.0"
+                length="2813410"
+                type="application/octet-stream"
+                sparkle:edSignature="qCa5Rg1gszAextPTOSLeY+QOld5w/Oqct332rnwuIi4Jl47fraWIEqjGyjhwNfJ/LebFiU3zc4po/2RLq62jDw=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.6.4</title>
             <description><![CDATA[
                 <h2>dria v1.6.4</h2>
