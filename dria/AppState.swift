@@ -298,13 +298,13 @@ final class AppState {
         activeModeId = UUID(uuidString: UserDefaults.standard.string(forKey: "activeModeId") ?? "") ?? StudyMode.general.id
 
         loadKnowledgeBase()
+        migrateOldChatHistory()
         chatHistory = loadChatHistory(for: activeModeId)
         setupHotkeys()
 
-        // Defer clipboard + Sparkle to avoid TCC crash on launch
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            self?.setupClipboardDetection()
-        }
+        // Setup clipboard callbacks but DON'T start monitoring automatically
+        // User must toggle "Watching" button to start — avoids TCC crash
+        setupClipboardDetection()
     }
 
     private func setupClipboardDetection() {
@@ -329,9 +329,8 @@ final class AppState {
         }
 
         clipboard.detector.sensitivity = DetectionSensitivity(rawValue: detectionSensitivity) ?? .normal
-        if autoMonitorClipboard {
-            clipboard.startMonitoring()
-        }
+        // Don't auto-start monitoring — user clicks "Watching" button
+        // This prevents TCC clipboard access crash on launch
     }
 
     /// Auto-answer a detected question from clipboard
@@ -387,6 +386,21 @@ final class AppState {
     // MARK: - Per-Mode Chat Persistence
 
     private static let maxPersistedMessages = 50
+
+    /// Migrate old shared chatHistory to the General mode (one-time)
+    private func migrateOldChatHistory() {
+        let oldKey = "chatHistory"
+        let newKey = chatKey(for: StudyMode.general.id)
+        // Only migrate if old key exists and new key doesn't
+        guard UserDefaults.standard.data(forKey: oldKey) != nil,
+              UserDefaults.standard.data(forKey: newKey) == nil else { return }
+        // Copy old data to General mode
+        if let data = UserDefaults.standard.data(forKey: oldKey) {
+            UserDefaults.standard.set(data, forKey: newKey)
+        }
+        // Remove old key
+        UserDefaults.standard.removeObject(forKey: oldKey)
+    }
 
     private func chatKey(for modeId: UUID) -> String {
         "chatHistory_\(modeId.uuidString)"
@@ -803,8 +817,10 @@ final class AppState {
         }
 
         if chatHistory.count > 100 { chatHistory.removeFirst(chatHistory.count - 80) }
-        let question = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        var question = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
+        // Cap message length to prevent SwiftUI render hang
+        if question.count > 2000 { question = String(question.prefix(2000)) + "..." }
 
         guard let gemini = getOrCreateGemini() else {
             let err = errorMessage ?? "Configure AI in Settings → AI Model"
@@ -821,8 +837,8 @@ final class AppState {
         chatHistory.append(userMessage)
         currentQuestion = ""
 
-        // Include clipboard text as extra context if available
-        let (clipText, _) = clipboard.readCurrentClipboard()
+        // Include clipboard text as extra context — skip NSImage read to avoid TCC crash
+        let clipText = NSPasteboard.general.string(forType: .string)
         let kbContext = knowledgeBase?.buildContext(for: question)
         var contextString = kbContext?.contextString ?? ""
         let sourceFiles = kbContext?.sourceFiles ?? []
@@ -904,11 +920,16 @@ final class AppState {
         // 2. Save existing text
         voice.prefixText = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 3. Callbacks — voice transcript goes AFTER prefix text
+        // 3. Callbacks — throttled to avoid SwiftUI render storm with long text
         let savedPrefix = voice.prefixText
+        var lastUpdateTime: Date = .distantPast
         voice.onPartialTranscript = { [weak self] voiceText in
             guard let self else { return }
             self.lastVoiceText = voiceText
+            // Throttle: update at most every 0.3s
+            let now = Date()
+            guard now.timeIntervalSince(lastUpdateTime) > 0.3 else { return }
+            lastUpdateTime = now
             let newText = savedPrefix.isEmpty ? voiceText : savedPrefix + " " + voiceText
             self.currentQuestion = newText
         }
@@ -918,32 +939,26 @@ final class AppState {
             self.currentQuestion = newText
         }
 
-        // 4. Start — instant if already permitted + pre-warmed
-        if voice.permissionGranted {
-            voice.startListening()
-        } else {
-            Task {
-                let ok = await voice.requestPermission()
-                guard ok else {
-                    self.isVoiceListening = false
-                    onIconColorChange?("reset")
-                    return
-                }
-                // Pre-warm engine for next time
-                voice.prepareEngine()
-                voice.startListening()
-            }
+        // 4. Just start — don't request permissions (TCC crashes the app on macOS 26)
+        //    If mic isn't authorized, the engine will fail silently
+        voice.permissionGranted = true  // Skip permission check in startListening
+        voice.startListening()
+
+        // If it didn't actually start (no permission), reset UI
+        if !voice.isListening {
+            isVoiceListening = false
+            onIconColorChange?("reset")
         }
     }
 
     func stopVoiceInput() {
+        // Save what's in the text field BEFORE stopping — this is the truth
+        let savedText = currentQuestion
         isVoiceListening = false
         onIconColorChange?("reset")
-        let savedText = currentQuestion
         voice.stopListening()
-        if currentQuestion.isEmpty && !savedText.isEmpty {
-            currentQuestion = savedText
-        }
+        // Always restore — stopListening might have cleared it
+        currentQuestion = savedText
     }
 
     // MARK: - Practice Mode

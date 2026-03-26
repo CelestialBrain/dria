@@ -810,7 +810,12 @@ private struct GeneralSettingsTab: View {
                 Button("Export Debug Logs") {
                     exportDebugLogs()
                 }
-                Text("Saves app settings, crash info, and system details to a file you can share for support.")
+                Button("Report Bug on GitHub") {
+                    if let url = URL(string: "https://github.com/CelestialBrain/dria/issues/new?template=bug_report.md&title=Bug:+") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Text("Export logs first, then attach to the GitHub issue.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

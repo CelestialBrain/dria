@@ -236,7 +236,7 @@ private struct MessageBubble: View {
 
                         // Message text
                         if !message.content.isEmpty {
-                            Text(message.content)
+                            Text(message.content.count > 500 ? String(message.content.prefix(500)) + "..." : message.content)
                                 .textSelection(.enabled)
                                 .font(.body)
                         }

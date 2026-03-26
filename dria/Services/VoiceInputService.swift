@@ -29,7 +29,8 @@ final class VoiceInputService: NSObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
-    private var committedText: String = ""  // Finalized segments that won't change
+    var savedSegments: String = ""     // Accumulated text from previous recognition segments
+    var currentSegmentBest: String = "" // Longest text in current segment
     private var isPrepared = false
 
     // ScreenCaptureKit
@@ -57,17 +58,46 @@ final class VoiceInputService: NSObject {
     func requestPermission() async -> Bool {
         if permissionGranted { return true }
 
-        let speechOk = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status == .authorized)
+        // Check speech — only request if not determined
+        let speechStatus = SFSpeechRecognizer.authorizationStatus()
+        let speechOk: Bool
+        switch speechStatus {
+        case .authorized:
+            speechOk = true
+        case .notDetermined:
+            speechOk = await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuation.resume(returning: status == .authorized)
+                }
             }
+        default:
+            // Denied/restricted — open settings, don't request (causes TCC crash)
+            await MainActor.run {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return false
         }
+
+        // Check mic — only request if not determined
+        let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         let micOk: Bool
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: micOk = true
-        case .notDetermined: micOk = await AVCaptureDevice.requestAccess(for: .audio)
-        default: micOk = false
+        switch micStatus {
+        case .authorized:
+            micOk = true
+        case .notDetermined:
+            micOk = await AVCaptureDevice.requestAccess(for: .audio)
+        default:
+            // Denied/restricted — open settings, don't request (causes TCC crash)
+            await MainActor.run {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return false
         }
+
         permissionGranted = speechOk && micOk
         return permissionGranted
     }
@@ -93,7 +123,8 @@ final class VoiceInputService: NSObject {
 
         isListening = true
         transcript = ""
-        committedText = ""
+        savedSegments = ""
+        currentSegmentBest = ""
 
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -126,16 +157,20 @@ final class VoiceInputService: NSObject {
                 guard let self, self.isListening else { return }
                 if let result {
                     let current = result.bestTranscription.formattedString
-                    let isFinal = result.isFinal
 
-                    if isFinal {
-                        self.committedText += (self.committedText.isEmpty ? "" : " ") + current
-                        self.transcript = self.committedText
-                    } else {
-                        self.transcript = self.committedText.isEmpty
-                            ? current
-                            : self.committedText + " " + current
+                    // Detect recognition restart: text got much shorter = new segment
+                    if current.count < self.currentSegmentBest.count / 2 && !self.currentSegmentBest.isEmpty {
+                        // Save the previous segment
+                        self.savedSegments += (self.savedSegments.isEmpty ? "" : " ") + self.currentSegmentBest
+                        self.currentSegmentBest = current
+                    } else if current.count >= self.currentSegmentBest.count {
+                        self.currentSegmentBest = current
                     }
+
+                    // Combine saved + current
+                    self.transcript = self.savedSegments.isEmpty
+                        ? self.currentSegmentBest
+                        : self.savedSegments + " " + self.currentSegmentBest
                     self.onPartialTranscript?(self.transcript)
                 }
             }
