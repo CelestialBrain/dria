@@ -7,6 +7,26 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.6.1</title>
+            <description><![CDATA[
+                <h2>dria v1.6.1 — Hotfix</h2>
+                <ul>
+                    <li>Fixed crash on fresh install (TCC permission request at startup)</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 07:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.6.1/dria-v1.6.1.dmg"
+                sparkle:version="7"
+                sparkle:shortVersionString="1.6.1"
+                length="2794949"
+                type="application/octet-stream"
+                sparkle:edSignature="TRvexhYY3v5W6oknQjPkr5vzyAWo/w17vkeP+P3hiQXiE4FSp2UQH3yLmyP5sxpaqvCXxYpIpWaB7iRisM4hBg=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.6.0</title>
             <description><![CDATA[
                 <h2>dria v1.6.0 — Stability Release</h2>
