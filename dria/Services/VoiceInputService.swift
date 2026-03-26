@@ -84,12 +84,8 @@ final class VoiceInputService: NSObject {
     // MARK: - Start (instant if pre-warmed)
 
     func startListening() {
-        print("[VOICE] startListening called")
-        print("[VOICE]   recognizer=\(recognizer != nil), available=\(recognizer?.isAvailable ?? false)")
-        print("[VOICE]   permission=\(permissionGranted), isPrepared=\(isPrepared)")
-        print("[VOICE]   audioSource=\(audioSource.rawValue), prefixText='\(prefixText)'")
-        guard let recognizer, recognizer.isAvailable else { print("[VOICE] BAIL: no recognizer"); return }
-        guard permissionGranted else { print("[VOICE] BAIL: no permission"); return }
+        guard let recognizer, recognizer.isAvailable else { return }
+        guard permissionGranted else { return }
 
         // Clean up any previous session
         if audioEngine.isRunning { audioEngine.stop() }
@@ -135,17 +131,12 @@ final class VoiceInputService: NSObject {
                     if isFinal {
                         self.committedText += (self.committedText.isEmpty ? "" : " ") + current
                         self.transcript = self.committedText
-                        print("[VOICE] FINAL: '\(current)' → committed='\(self.committedText)'")
                     } else {
                         self.transcript = self.committedText.isEmpty
                             ? current
                             : self.committedText + " " + current
-                        print("[VOICE] PARTIAL: '\(current)' → transcript='\(self.transcript)'")
                     }
                     self.onPartialTranscript?(self.transcript)
-                }
-                if let error {
-                    print("[VOICE] RECOGNITION ERROR: \(error.localizedDescription)")
                 }
             }
         }
@@ -166,9 +157,7 @@ final class VoiceInputService: NSObject {
 
         do {
             try audioEngine.start()
-            print("[VOICE] Engine started OK, sampleRate=\(format.sampleRate), channels=\(format.channelCount)")
         } catch {
-            print("[VOICE] Engine start FAILED: \(error)")
             audioEngine.inputNode.removeTap(onBus: 0)
         }
     }
@@ -202,8 +191,7 @@ final class VoiceInputService: NSObject {
     // MARK: - Stop
 
     func stopListening() {
-        print("[VOICE] stopListening called, isListening=\(isListening), committed='\(committedText)', transcript='\(transcript)'")
-        guard isListening else { print("[VOICE] BAIL: not listening"); return }
+        guard isListening else { return }
 
         recognitionRequest?.endAudio()
         if audioEngine.isRunning {

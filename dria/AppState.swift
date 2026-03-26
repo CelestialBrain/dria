@@ -300,7 +300,11 @@ final class AppState {
         loadKnowledgeBase()
         chatHistory = loadChatHistory(for: activeModeId)
         setupHotkeys()
-        setupClipboardDetection()
+
+        // Defer clipboard + Sparkle to avoid TCC crash on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.setupClipboardDetection()
+        }
     }
 
     private func setupClipboardDetection() {
@@ -893,7 +897,6 @@ final class AppState {
     private var lastVoiceText: String = ""
 
     func startVoiceInput() {
-        print("[VOICE-APP] startVoiceInput called, permissionGranted=\(voice.permissionGranted)")
         onIconColorChange?("red")
         isVoiceListening = true
         lastVoiceText = ""
@@ -903,18 +906,15 @@ final class AppState {
 
         // 3. Callbacks — voice transcript goes AFTER prefix text
         let savedPrefix = voice.prefixText
-        print("[VOICE-APP] prefix='\(savedPrefix)'")
         voice.onPartialTranscript = { [weak self] voiceText in
             guard let self else { return }
             self.lastVoiceText = voiceText
             let newText = savedPrefix.isEmpty ? voiceText : savedPrefix + " " + voiceText
-            print("[VOICE-APP] onPartial: voice='\(voiceText)' → field='\(newText)'")
             self.currentQuestion = newText
         }
         voice.onTranscriptReady = { [weak self] voiceText in
             guard let self, !voiceText.isEmpty else { return }
             let newText = savedPrefix.isEmpty ? voiceText : savedPrefix + " " + voiceText
-            print("[VOICE-APP] onReady: voice='\(voiceText)' → field='\(newText)'")
             self.currentQuestion = newText
         }
 
