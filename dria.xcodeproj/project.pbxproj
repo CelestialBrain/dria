@@ -267,7 +267,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "dria uses the microphone for voice input to transcribe speech to text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "dria uses speech recognition to transcribe your voice for AI queries.";
-				INFOPLIST_KEY_SUFeedURL = "https://celestialbrain.github.io/dria/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "https://github.com/CelestialBrain/dria/releases/latest/download/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "pZPyNVXk3hmaXBkhuuXLoqsdb7RzIA4Xg+2nqPxEA10=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -303,7 +304,8 @@
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "dria uses the microphone for voice input to transcribe speech to text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "dria uses speech recognition to transcribe your voice for AI queries.";
-				INFOPLIST_KEY_SUFeedURL = "https://celestialbrain.github.io/dria/appcast.xml";
+				INFOPLIST_KEY_SUFeedURL = "https://github.com/CelestialBrain/dria/releases/latest/download/appcast.xml";
+				INFOPLIST_KEY_SUPublicEDKey = "pZPyNVXk3hmaXBkhuuXLoqsdb7RzIA4Xg+2nqPxEA10=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
