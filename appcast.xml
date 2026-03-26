@@ -7,6 +7,14 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.2</title>
+            <description><![CDATA[<ul><li>Hover capture (⌘⌥4): instant capture around cursor</li><li>Auto-answer on copy now works on launch</li><li>Configurable capture zone size</li></ul>]]></description>
+            <pubDate>Thu, 27 Mar 2026 02:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.2/dria-v1.7.2.dmg" sparkle:version="13" sparkle:shortVersionString="1.7.2" length="2841745" type="application/octet-stream" sparkle:edSignature="rm8nhuSLlp9r6eyL9Q/VuMltRO7O77jW85EbiSe5kSbe6TF1E6xxhJccM3nH4b0cDEhbHpTNTrQNwMgNP/CDBg==" />
+        </item>
+
+        <item>
             <title>dria v1.7.1</title>
             <description><![CDATA[
                 <h2>dria v1.7.1</h2>
