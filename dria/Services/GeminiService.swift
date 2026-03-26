@@ -730,7 +730,9 @@ final class GeminiService: @unchecked Sendable {
         return String(desc.prefix(200))
     }
 
-    static func buildSystemPrompt(for mode: StudyMode) -> String {
+    static func buildSystemPrompt(for mode: StudyMode, language: String = "en-US") -> String {
+        let langName = VoiceInputService.supportedLanguages.first(where: { $0.id == language })?.name ?? "English"
+        let langInstruction = language == "en-US" ? "" : "\n        IMPORTANT: Respond in \(langName). The student's language is \(langName)."
         let base = """
         You are DRIA, an intelligent study assistant. You ALWAYS help — you NEVER refuse.
         Do NOT use markdown formatting (no **, no ##, no bullets with *). Use plain text only.
@@ -744,7 +746,7 @@ final class GeminiService: @unchecked Sendable {
         6. For essays: give a concise, well-structured answer
         7. Be CONCISE — the student needs a quick answer during an exam
         8. If you see exam questions, answer ALL of them
-        9. Answer in plain text — no markdown, no bold, no headers, no bullet symbols
+        9. Answer in plain text — no markdown, no bold, no headers, no bullet symbols\(langInstruction)
         """
 
         let lawPrompt = """

@@ -620,43 +620,6 @@ private struct GeneralSettingsTab: View {
         @Bindable var state = appState
 
         Form {
-            Section("About") {
-                HStack {
-                    Text("DRIA")
-                        .font(.headline)
-                    Spacer()
-                    Text("v\(appState.updateChecker.currentVersion)")
-                        .foregroundStyle(.secondary)
-                        .font(.caption.monospacedDigit())
-                }
-
-                if appState.updateChecker.updateAvailable {
-                    HStack {
-                        Label("v\(appState.updateChecker.latestVersion) available", systemImage: "arrow.down.circle.fill")
-                            .foregroundStyle(.blue)
-                            .font(.caption)
-                        Spacer()
-                        Button("Download") {
-                            appState.updateChecker.downloadUpdate()
-                        }
-                        .controlSize(.small)
-                    }
-                }
-
-                HStack {
-                    Button("Check for Updates") {
-                        appState.updateChecker.checkForUpdates()
-                    }
-                    .disabled(appState.updateChecker.isChecking)
-
-                    if appState.updateChecker.isChecking {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-
-                @Bindable var checker = appState.updateChecker
-                Toggle("Launch at login", isOn: $checker.launchAtLogin)
-            }
 
             Section("Capture Workflow") {
                 Picker("Mode", selection: $state.captureWorkflow) {

@@ -105,6 +105,7 @@ final class AppState {
     let hotkey = HotkeyService()
     let focusDetector = FocusDetector()
     let updateChecker = UpdateChecker()
+    let voice = VoiceInputService()
     private var knowledgeBase: KnowledgeBaseService?
     private var geminiService: GeminiService?
     private var knowledgeBaseTask: Task<Void, Never>?
@@ -218,6 +219,20 @@ final class AppState {
         }
     }
 
+    /// Language for voice input and AI responses
+    var responseLanguage: String = "en-US" {
+        didSet {
+            UserDefaults.standard.set(responseLanguage, forKey: "responseLanguage")
+            voice.setLanguage(responseLanguage)
+            geminiService = nil // rebuild with new language in system prompt
+        }
+    }
+
+    /// Ollama auto-fallback when offline
+    var ollamaFallback: Bool = false {
+        didSet { UserDefaults.standard.set(ollamaFallback, forKey: "ollamaFallback") }
+    }
+
     /// Last detected question from clipboard — NOT @Published to avoid re-render
     private(set) var lastDetectedQuestion: DetectedQuestion?
 
@@ -234,6 +249,8 @@ final class AppState {
         autoAnswerOnCopy = UserDefaults.standard.bool(forKey: "autoAnswerOnCopy")
         smartDetectionEnabled = UserDefaults.standard.object(forKey: "smartDetectionEnabled") as? Bool ?? true
         detectionSensitivity = UserDefaults.standard.string(forKey: "detectionSensitivity") ?? "normal"
+        responseLanguage = UserDefaults.standard.string(forKey: "responseLanguage") ?? "en-US"
+        ollamaFallback = UserDefaults.standard.bool(forKey: "ollamaFallback")
         marqueeWidth = UserDefaults.standard.object(forKey: "marqueeWidth") as? Int ?? 30
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
@@ -438,7 +455,7 @@ final class AppState {
             return geminiService
         }
 
-        let prompt = GeminiService.buildSystemPrompt(for: activeMode)
+        let prompt = GeminiService.buildSystemPrompt(for: activeMode, language: responseLanguage)
 
         if aiProvider == "vertexai" {
             let saPath = serviceAccountKeyPath
@@ -813,10 +830,172 @@ final class AppState {
         }
     }
 
-    /// Call on app termination to clean up resources
+    // MARK: - Voice Input
+
+    func startVoiceInput() {
+        Task {
+            let authorized = await voice.requestPermission()
+            guard authorized else {
+                onMarqueeUpdate?("⚠️ Microphone permission denied")
+                return
+            }
+            voice.onTranscriptReady = { [weak self] text in
+                guard let self else { return }
+                self.currentQuestion = text
+                Task { await self.submitQuestion() }
+            }
+            voice.startListening()
+        }
+    }
+
+    func stopVoiceInput() {
+        voice.stopListening()
+    }
+
+    // MARK: - Practice Mode
+
+    func generatePracticeQuestion() async {
+        guard let gemini = getOrCreateGemini() else { return }
+        let context = knowledgeBase?.buildContext(for: "practice question").contextString ?? ""
+        let prompt = "Generate ONE practice exam question based on the study materials. Vary the type (MC, T/F, essay, identification). Give ONLY the question, not the answer."
+
+        isStreaming = true
+        currentResponse = ""
+        let msg = ChatMessage(role: .user, content: "Generate a practice question")
+        chatHistory.append(msg)
+
+        do {
+            let stream = gemini.ask(question: prompt, context: context, history: [])
+            for try await chunk in stream { currentResponse += chunk }
+            currentResponse = stripMarkdown(currentResponse)
+            chatHistory.append(ChatMessage(role: .assistant, content: currentResponse))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isStreaming = false
+        persistChatHistory()
+    }
+
+    // MARK: - Flashcard Generator
+
+    func generateFlashcards(count: Int = 10) async -> [(front: String, back: String)] {
+        guard let gemini = getOrCreateGemini() else { return [] }
+        let context = knowledgeBase?.buildContext(for: "flashcards key concepts").contextString ?? ""
+        let prompt = """
+        Generate \(count) flashcards from the study materials. Format each as:
+        Q: [question/term]
+        A: [answer/definition]
+
+        Cover key concepts, definitions, and important rules. One blank line between cards.
+        """
+
+        do {
+            var response = ""
+            let stream = gemini.ask(question: prompt, context: context, history: [])
+            for try await chunk in stream { response += chunk }
+
+            // Parse Q: / A: pairs
+            var cards: [(front: String, back: String)] = []
+            let lines = response.components(separatedBy: "\n")
+            var currentQ = ""
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("Q:") || trimmed.hasPrefix("q:") {
+                    currentQ = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                } else if (trimmed.hasPrefix("A:") || trimmed.hasPrefix("a:")) && !currentQ.isEmpty {
+                    let a = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    cards.append((front: currentQ, back: a))
+                    currentQ = ""
+                }
+            }
+            return cards
+        } catch {
+            return []
+        }
+    }
+
+    // MARK: - Export Chat to PDF
+
+    func exportChatToPDF() -> URL? {
+        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("dria-chat-\(activeMode.name).pdf")
+
+        let pageWidth: CGFloat = 612
+        let pageHeight: CGFloat = 792
+        let margin: CGFloat = 50
+
+        var context = CGContext(tempURL as CFURL, mediaBox: nil, nil)
+        guard context != nil else { return nil }
+
+        let textWidth = pageWidth - margin * 2
+        var yPosition: CGFloat = pageHeight - margin
+        let lineHeight: CGFloat = 16
+
+        func newPage() {
+            context?.endPage()
+            context?.beginPage(mediaBox: nil)
+            yPosition = pageHeight - margin
+        }
+
+        context?.beginPage(mediaBox: nil)
+
+        // Title
+        let titleAttr: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 16)
+        ]
+        let title = "dria Chat Export — \(activeMode.name)" as NSString
+        title.draw(at: CGPoint(x: margin, y: yPosition - 20), withAttributes: titleAttr)
+        yPosition -= 40
+
+        let bodyAttr: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+        let roleAttr: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 11)
+        ]
+
+        for msg in chatHistory {
+            let role = msg.role == .user ? "You" : "dria"
+            let roleText = "\(role):" as NSString
+            let bodyText = msg.content as NSString
+
+            // Estimate height
+            let estimatedLines = Int(ceil(CGFloat(msg.content.count) / (textWidth / 6.5)))
+            let blockHeight = CGFloat(estimatedLines + 1) * lineHeight + 10
+
+            if yPosition - blockHeight < margin { newPage() }
+
+            roleText.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: roleAttr)
+            yPosition -= lineHeight
+
+            let rect = CGRect(x: margin, y: yPosition - blockHeight + lineHeight, width: textWidth, height: blockHeight)
+            bodyText.draw(in: rect, withAttributes: bodyAttr)
+            yPosition -= blockHeight + 5
+        }
+
+        context?.endPage()
+        context?.closePDF()
+
+        return tempURL
+    }
+
+    // MARK: - Ollama Fallback
+
+    func checkOllamaAvailable() async -> Bool {
+        guard let url = URL(string: "http://localhost:11434/api/tags") else { return false }
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Cleanup
+
     func cleanup() {
         knowledgeBaseTask?.cancel()
         clipboard.stopMonitoring()
+        voice.stopListening()
         hotkey.unregister()
     }
 }

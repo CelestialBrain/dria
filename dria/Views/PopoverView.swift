@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Shows custom DRIA icon for "sparkles", SF Symbol for everything else
 struct ModeIcon: View {
@@ -149,6 +150,21 @@ struct PopoverView: View {
                 .environment(appState)
         }
         .background(.ultraThinMaterial)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in
+                        let mode = appState.activeMode
+                        let success = await appState.addFile(to: mode, from: url)
+                        if success {
+                            appState.onMarqueeUpdate?("📄 Imported \(url.lastPathComponent)")
+                        }
+                    }
+                }
+            }
+            return true
+        }
     }
 }
 
