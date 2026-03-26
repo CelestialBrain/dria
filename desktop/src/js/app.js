@@ -8,13 +8,8 @@ const listen = isTauri ? window.__TAURI__.event.listen : async () => {};
 // Init modes
 modesManager.init();
 
-// Listen for global shortcut events from Rust
-listen('global-shortcut', (event) => {
-  const key = event.payload;
-  if (key.includes('1')) captureScreen();
-  else if (key.includes('2')) submitQuestion();
-  else if (key.includes('3')) toggleWindow();
-});
+// Global shortcut listener is set up later in the hotkeys section
+// (after all functions are defined, so captureScreen/submitQuestion/toggleWindow exist)
 
 // State
 const state = {
@@ -102,29 +97,11 @@ document.getElementById('saveApiBtn')?.addEventListener('click', () => {
   settingsPanel.style.display = 'none';
 });
 
-// Mic toggle
-micBtn.addEventListener('click', () => {
-  state.isListening = !state.isListening;
-  micBtn.classList.toggle('recording', state.isListening);
-  micBtn.textContent = state.isListening ? '🔴' : '🎤';
-  voiceBar.style.display = state.isListening ? 'flex' : 'none';
-  // TODO: Start/stop speech recognition via Tauri command
-});
+// Mic toggle — handled in voice input section below
+// voiceStop early handler — handled in voice input section below
 
-voiceStop.addEventListener('click', () => {
-  state.isListening = false;
-  micBtn.classList.remove('recording');
-  micBtn.textContent = '🎤';
-  voiceBar.style.display = 'none';
-});
-
-// Watch clipboard toggle
+// Watch clipboard toggle — handled in clipboard monitoring section below
 let watching = false;
-watchBtn.addEventListener('click', () => {
-  watching = !watching;
-  watchBtn.classList.toggle('active', watching);
-  watchBtn.textContent = watching ? '👁 Watching' : '👁 Auto';
-});
 
 // Submit question
 async function submitQuestion() {
@@ -142,13 +119,18 @@ async function submitQuestion() {
   }
 
   state.isStreaming = true;
+  setTrayStatus('processing');
   const response = await callAI(question);
   state.isStreaming = false;
+  setTrayStatus('ready');
 
   addMessage('assistant', response);
 
   // Analytics: count query
   if (typeof analytics !== 'undefined') analytics.increment('totalQueries');
+
+  // Return to idle after a brief delay
+  setTimeout(() => setTrayStatus('idle'), 3000);
 }
 
 // Call AI provider
@@ -314,13 +296,15 @@ setInterval(() => {
 // Screen capture
 async function captureScreen() {
   try {
+    setTrayStatus('captured');
     const imageData = await invoke('capture_screen');
     if (imageData) {
       state.capturedImage = imageData;
       // Analytics: count screenshot
       if (typeof analytics !== 'undefined') analytics.increment('screenshots');
       // Show preview in chat
-      addMessage('user', '[Screenshot captured — press Ctrl+Alt+2 to send]');
+      const sendKey = localStorage.getItem('hotkeySend') || '2';
+      addMessage('user', `[Screenshot captured — press Ctrl+Alt+${sendKey} to send]`);
       // Update last message with image
       const lastBubble = chatArea.querySelector('.message:last-child .bubble');
       if (lastBubble) {
@@ -333,8 +317,10 @@ async function captureScreen() {
       }
     }
   } catch (err) {
+    setTrayStatus('error');
     addMessage('assistant', `Capture failed: ${err}`);
   }
+  setTimeout(() => setTrayStatus('idle'), 2000);
 }
 
 // Screenshot button
@@ -452,8 +438,10 @@ micBtn.addEventListener('click', () => {
 
   if (state.isListening) {
     recognition.start();
+    setTrayStatus('recording');
   } else {
     recognition.stop();
+    setTrayStatus('idle');
   }
 });
 
@@ -463,6 +451,7 @@ voiceStop.addEventListener('click', () => {
   micBtn.textContent = '🎤';
   voiceBar.style.display = 'none';
   if (recognition) recognition.stop();
+  setTrayStatus('idle');
 });
 
 // ============= File handling =============
@@ -782,6 +771,219 @@ launchAtLoginToggle.addEventListener('change', async () => {
 });
 
 loadAutoStartState();
+
+// ============= Feature: Configurable Hotkeys =============
+
+const hotkeyCapture = document.getElementById('hotkeyCapture');
+const hotkeySend = document.getElementById('hotkeySend');
+const hotkeyToggle = document.getElementById('hotkeyToggle');
+const hotkeyHelp = document.getElementById('hotkeyHelp');
+
+// Load saved hotkeys
+const savedCapture = localStorage.getItem('hotkeyCapture') || '1';
+const savedSend = localStorage.getItem('hotkeySend') || '2';
+const savedToggle = localStorage.getItem('hotkeyToggle') || '3';
+hotkeyCapture.value = savedCapture;
+hotkeySend.value = savedSend;
+hotkeyToggle.value = savedToggle;
+
+function updateHotkeyHelp() {
+  const c = hotkeyCapture.value;
+  const s = hotkeySend.value;
+  const t = hotkeyToggle.value;
+  if (hotkeyHelp) {
+    hotkeyHelp.innerHTML =
+      `Ctrl+Alt+${c} to capture screen<br>` +
+      `Ctrl+Alt+${s} to send to AI<br>` +
+      `Ctrl+Alt+${t} to toggle chat<br><br>` +
+      `Drop files here to add to knowledge base`;
+  }
+}
+updateHotkeyHelp();
+
+document.getElementById('saveHotkeysBtn').addEventListener('click', async () => {
+  const c = hotkeyCapture.value;
+  const s = hotkeySend.value;
+  const t = hotkeyToggle.value;
+  localStorage.setItem('hotkeyCapture', c);
+  localStorage.setItem('hotkeySend', s);
+  localStorage.setItem('hotkeyToggle', t);
+  updateHotkeyHelp();
+
+  if (isTauri) {
+    try {
+      await invoke('update_hotkeys', { capture: c, send: s, toggle: t });
+    } catch (err) {
+      console.error('Failed to update hotkeys:', err);
+    }
+  }
+});
+
+// Update global-shortcut listener to use configurable keys
+listen('global-shortcut', (event) => {
+  const key = event.payload;
+  const ck = localStorage.getItem('hotkeyCapture') || '1';
+  const sk = localStorage.getItem('hotkeySend') || '2';
+  const tk = localStorage.getItem('hotkeyToggle') || '3';
+  if (key.includes(ck)) captureScreen();
+  else if (key.includes(sk)) submitQuestion();
+  else if (key.includes(tk)) toggleWindow();
+});
+
+// Send saved hotkeys to Rust on startup
+if (isTauri && (savedCapture !== '1' || savedSend !== '2' || savedToggle !== '3')) {
+  invoke('update_hotkeys', { capture: savedCapture, send: savedSend, toggle: savedToggle }).catch(() => {});
+}
+
+// ============= Feature: Tray Icon Status =============
+
+async function setTrayStatus(status) {
+  if (isTauri) {
+    try {
+      await invoke('set_tray_status', { status });
+    } catch {}
+  }
+}
+
+// ============= Feature: Area Selection =============
+
+async function captureArea() {
+  try {
+    await setTrayStatus('captured');
+    const imageData = await invoke('capture_area');
+    if (imageData) {
+      state.capturedImage = imageData;
+      if (typeof analytics !== 'undefined') analytics.increment('screenshots');
+      addMessage('user', '[Area selected — press Ctrl+Alt+' + (localStorage.getItem('hotkeySend') || '2') + ' to send]');
+      const lastBubble = chatArea.querySelector('.message:last-child .bubble');
+      if (lastBubble) {
+        const img = document.createElement('img');
+        img.src = imageData;
+        img.style.maxWidth = '100%';
+        img.style.borderRadius = '6px';
+        img.style.marginBottom = '4px';
+        lastBubble.prepend(img);
+      }
+    }
+  } catch (err) {
+    if (err !== 'Selection cancelled' && err !== 'No selection made') {
+      addMessage('assistant', `Area capture failed: ${err}`);
+    }
+  }
+  await setTrayStatus('idle');
+}
+
+document.getElementById('areaSelectBtn').addEventListener('click', captureArea);
+
+// ============= Feature: Desktop Audio =============
+
+async function startDesktopAudio() {
+  try {
+    // getDisplayMedia can capture system audio in some Chromium-based contexts
+    const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) {
+      addMessage('assistant', 'No audio track available. Desktop audio capture may not be supported in this WebView.');
+      return;
+    }
+
+    // Create a MediaRecorder to capture audio
+    const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    const chunks = [];
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      // Could process chunks here for speech-to-text
+      addMessage('assistant', 'Desktop audio recording stopped. Transcription not yet available for system audio.');
+    };
+
+    mediaRecorder.start();
+    addMessage('assistant', 'Desktop audio capture started. Note: this may not work in all WebViews.');
+
+    // Auto-stop after 30 seconds
+    setTimeout(() => {
+      if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+    }, 30000);
+  } catch (err) {
+    addMessage('assistant', 'Desktop audio capture is not available in this WebView. Use microphone input instead.');
+  }
+}
+
+// ============= Feature: Window Title Detection / LMS Auto-detect =============
+
+const autoDetectLmsToggle = document.getElementById('autoDetectLmsToggle');
+autoDetectLmsToggle.checked = localStorage.getItem('autoDetectLms') === 'true';
+
+autoDetectLmsToggle.addEventListener('change', () => {
+  localStorage.setItem('autoDetectLms', autoDetectLmsToggle.checked);
+  if (autoDetectLmsToggle.checked) {
+    startLmsPolling();
+  } else {
+    stopLmsPolling();
+  }
+});
+
+const lmsPatterns = [
+  { pattern: /canvas|instructure/i, label: 'Canvas LMS' },
+  { pattern: /google\s*forms/i, label: 'Google Forms' },
+  { pattern: /quizizz/i, label: 'Quizizz' },
+  { pattern: /kahoot/i, label: 'Kahoot' },
+  { pattern: /blackboard/i, label: 'Blackboard' },
+  { pattern: /moodle/i, label: 'Moodle' },
+  { pattern: /schoology/i, label: 'Schoology' },
+];
+
+let lmsPollingInterval = null;
+let lastDetectedLms = '';
+
+async function pollActiveWindow() {
+  if (!isTauri) return;
+  try {
+    const title = await invoke('get_active_window_title');
+    if (!title) return;
+
+    for (const lms of lmsPatterns) {
+      if (lms.pattern.test(title)) {
+        if (lastDetectedLms !== lms.label) {
+          lastDetectedLms = lms.label;
+          // Show a subtle notification in the answer overlay
+          document.getElementById('answerShort').textContent = `Detected: ${lms.label}`;
+          document.getElementById('answerOverlay').style.display = 'flex';
+          document.getElementById('answerOverlay').style.background = 'var(--accent)';
+          setTimeout(() => {
+            document.getElementById('answerOverlay').style.display = 'none';
+            document.getElementById('answerOverlay').style.background = 'var(--green)';
+          }, 3000);
+        }
+        return;
+      }
+    }
+    // No LMS detected — reset
+    lastDetectedLms = '';
+  } catch {}
+}
+
+function startLmsPolling() {
+  if (lmsPollingInterval) return;
+  lmsPollingInterval = setInterval(pollActiveWindow, 5000);
+}
+
+function stopLmsPolling() {
+  if (lmsPollingInterval) {
+    clearInterval(lmsPollingInterval);
+    lmsPollingInterval = null;
+  }
+  lastDetectedLms = '';
+}
+
+// Start polling if enabled on load
+if (autoDetectLmsToggle.checked) {
+  startLmsPolling();
+}
 
 // ============= Init =============
 
