@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dria</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <div class="header">
+      <div class="mode-picker">
+        <select id="modePicker">
+          <option value="general">General</option>
+        </select>
+        <span class="file-count" id="fileCount">0 files</span>
+      </div>
+      <div class="header-actions">
+        <button id="clearBtn" class="icon-btn" title="Clear chat">🗑</button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">⚙</button>
+      </div>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat-area" id="chatArea">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📚</div>
+        <div class="empty-title">dria</div>
+        <div class="empty-subtitle">
+          Ctrl+Alt+1 to capture screen<br>
+          Ctrl+Alt+2 to send to AI<br>
+          Ctrl+Alt+3 to toggle chat
+        </div>
+      </div>
+    </div>
+
+    <!-- Voice wave bar -->
+    <div class="voice-bar" id="voiceBar" style="display:none">
+      <div class="voice-dot"></div>
+      <div class="voice-waves" id="voiceWaves"></div>
+      <span class="voice-label">Listening...</span>
+      <button class="voice-stop" id="voiceStop">⏹</button>
+    </div>
+
+    <!-- Tool buttons -->
+    <div class="tool-bar">
+      <button class="tool-btn" id="pasteBtn">📋 Paste</button>
+      <button class="tool-btn" id="screenshotBtn">📷 Screenshot</button>
+      <button class="tool-btn" id="watchBtn">👁 Auto</button>
+      <div class="spacer"></div>
+      <button class="tool-btn icon-only" id="toolsBtn" title="Tools">🔧</button>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <textarea id="questionInput" placeholder="Ask anything..." rows="1"></textarea>
+      <button class="mic-btn" id="micBtn" title="Voice input">🎤</button>
+      <button class="send-btn" id="sendBtn" title="Send">⬆</button>
+    </div>
+  </div>
+
+  <!-- Settings panel (hidden by default) -->
+  <div class="settings-panel" id="settingsPanel" style="display:none">
+    <div class="settings-header">
+      <h3>Settings</h3>
+      <button class="icon-btn" id="settingsClose">✕</button>
+    </div>
+    <div class="settings-tabs">
+      <button class="tab active" data-tab="ai">AI Model</button>
+      <button class="tab" data-tab="modes">Modes</button>
+      <button class="tab" data-tab="general">General</button>
+    </div>
+    <div class="settings-content" id="settingsContent">
+      <!-- AI Model tab -->
+      <div class="tab-content active" id="tab-ai">
+        <label>Provider</label>
+        <select id="providerSelect">
+          <option value="googleai">Google AI (API Key)</option>
+          <option value="vertexai">Vertex AI</option>
+          <option value="claude">Claude</option>
+          <option value="openai">OpenAI</option>
+          <option value="groq">Groq</option>
+          <option value="mistral">Mistral</option>
+          <option value="ollama">Ollama (Local)</option>
+          <option value="openrouter">OpenRouter</option>
+        </select>
+        <label>API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Paste your API key">
+        <label>Model</label>
+        <select id="modelSelect">
+          <option>gemini-2.5-flash</option>
+          <option>gemini-2.0-flash</option>
+          <option>gemini-2.5-pro</option>
+        </select>
+        <button class="primary-btn" id="saveApiBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
