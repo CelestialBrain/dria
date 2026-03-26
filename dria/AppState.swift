@@ -281,7 +281,7 @@ final class AppState {
         activeModeId = UUID(uuidString: UserDefaults.standard.string(forKey: "activeModeId") ?? "") ?? StudyMode.general.id
 
         loadKnowledgeBase()
-        chatHistory = Self.loadChatHistory()
+        chatHistory = loadChatHistory(for: activeModeId)
         setupHotkeys()
         setupClipboardDetection()
     }
@@ -363,32 +363,46 @@ final class AppState {
         persistChatHistory()
     }
 
-    // MARK: - Chat Persistence (Bug 3 fix)
+    // MARK: - Per-Mode Chat Persistence
 
-    private static let chatHistoryKey = "chatHistory"
-    private static let maxPersistedMessages = 100
+    private static let maxPersistedMessages = 50
+
+    private func chatKey(for modeId: UUID) -> String {
+        "chatHistory_\(modeId.uuidString)"
+    }
 
     private func persistChatHistory() {
+        let key = chatKey(for: activeModeId)
         let toSave = Array(chatHistory.suffix(Self.maxPersistedMessages))
         if let data = try? JSONEncoder().encode(toSave) {
-            UserDefaults.standard.set(data, forKey: Self.chatHistoryKey)
+            UserDefaults.standard.set(data, forKey: key)
         }
     }
 
-    private static func loadChatHistory() -> [ChatMessage] {
-        guard let data = UserDefaults.standard.data(forKey: chatHistoryKey),
+    private func loadChatHistory(for modeId: UUID) -> [ChatMessage] {
+        let key = chatKey(for: modeId)
+        guard let data = UserDefaults.standard.data(forKey: key),
               let messages = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
             return []
         }
-        return Array(messages.suffix(maxPersistedMessages))
+        return Array(messages.suffix(Self.maxPersistedMessages))
     }
 
     // MARK: - Mode Management
 
     func switchMode(to mode: StudyMode) {
+        // Save current mode's chat before switching
+        persistChatHistory()
+
         activeModeId = mode.id
         geminiService = nil
         loadKnowledgeBase()
+
+        // Load the new mode's chat
+        chatHistory = loadChatHistory(for: mode.id)
+        currentResponse = ""
+        isStreaming = false
+
         onModeChanged?(mode)
         onMarqueeUpdate?("📚 \(mode.name)")
         AnalyticsService.shared.track(.modeSwitch)
@@ -823,7 +837,7 @@ final class AppState {
     func clearChat() {
         chatHistory.removeAll()
         AttachmentCache.shared.clear()
-        UserDefaults.standard.removeObject(forKey: Self.chatHistoryKey)
+        UserDefaults.standard.removeObject(forKey: chatKey(for: activeModeId))
         currentResponse = ""
         currentQuestion = ""
         errorMessage = nil

@@ -110,7 +110,7 @@ struct PopoverView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(appState.chatHistory) { message in
+                            ForEach(Array(appState.chatHistory.suffix(30)), id: \.id) { message in
                                 MessageBubble(message: message)
                             }
 
