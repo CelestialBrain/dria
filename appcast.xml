@@ -7,6 +7,26 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.6.2</title>
+            <description><![CDATA[
+                <h2>dria v1.6.2</h2>
+                <ul>
+                    <li>Export Debug Logs for remote troubleshooting</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 26 Mar 2026 08:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/CelestialBrain/dria/releases/download/v1.6.2/dria-v1.6.2.dmg"
+                sparkle:version="8"
+                sparkle:shortVersionString="1.6.2"
+                length="2804246"
+                type="application/octet-stream"
+                sparkle:edSignature="zWhsyb8UkiyxmGoqKlFK4ePlbWmNDcMj2zJc/oXs9RO9/kC3joQKzLgCbCGC0sFfyhBViEaiykCOR6MGUGsqBw=="
+            />
+        </item>
+
+        <item>
             <title>dria v1.6.1</title>
             <description><![CDATA[
                 <h2>dria v1.6.1 — Hotfix</h2>
