@@ -94,6 +94,46 @@ struct ChatInputField: NSViewRepresentable {
     }
 }
 
+// MARK: - Mic Toggle (NSButton to avoid SwiftUI gesture crash)
+
+struct MicToggleButton: NSViewRepresentable {
+    var isListening: Bool
+    var action: () -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(frame: .zero)
+        button.bezelStyle = .inline
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "Microphone")
+        button.contentTintColor = .secondaryLabelColor
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.tapped)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        let iconName = isListening ? "mic.fill" : "mic"
+        button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Microphone")
+        button.contentTintColor = isListening ? .systemRed : .secondaryLabelColor
+        // Update the action closure
+        context.coordinator.action = action
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+
+        @objc func tapped() {
+            // Dispatch async to avoid any SwiftUI mid-gesture issues
+            DispatchQueue.main.async { self.action() }
+        }
+    }
+}
+
 // MARK: - Voice Wave Animation
 
 struct VoiceWaveView: View {
@@ -134,7 +174,7 @@ struct InputView: View {
 
         VStack(spacing: 8) {
             // Voice wave bar — shows when listening
-            if appState.voice.isListening {
+            if appState.isVoiceListening {
                 HStack(spacing: 8) {
                     Circle()
                         .fill(Color.red)
@@ -144,11 +184,13 @@ struct InputView: View {
                     Text("Listening...")
                         .font(.caption)
                         .foregroundStyle(.red)
-                    Button(action: { appState.stopVoiceInput() }) {
-                        Image(systemName: "stop.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                    .buttonStyle(.plain)
+                    Image(systemName: "stop.circle.fill")
+                        .foregroundStyle(.red)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            DispatchQueue.main.async { appState.stopVoiceInput() }
+                        }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -196,6 +238,20 @@ struct InputView: View {
                     Button(action: exportPDF) {
                         Label("Export to PDF", systemImage: "arrow.down.doc")
                     }
+                    Divider()
+                    Menu("Audio Source") {
+                        ForEach(AudioSource.allCases, id: \.self) { source in
+                            Button {
+                                appState.audioSource = source
+                            } label: {
+                                if appState.audioSource == source {
+                                    Label(source.rawValue, systemImage: "checkmark")
+                                } else {
+                                    Text(source.rawValue)
+                                }
+                            }
+                        }
+                    }
                 } label: {
                     Image(systemName: "wrench.and.screwdriver")
                         .font(.system(size: 12))
@@ -208,7 +264,7 @@ struct InputView: View {
 
             // Text field + mic + send
             HStack(alignment: .center, spacing: 6) {
-                let placeholder = appState.voice.isListening
+                let placeholder = appState.isVoiceListening
                     ? "Listening..."
                     : (appState.activeMode.id == StudyMode.general.id
                         ? "Ask anything..."
@@ -217,21 +273,25 @@ struct InputView: View {
                 ChatInputField(text: $state.currentQuestion, height: $inputHeight, placeholder: placeholder) {
                     Task { await appState.submitQuestion() }
                 }
-                .frame(height: inputHeight)
+                .frame(height: max(18, inputHeight))
 
-                // Mic button
-                Button(action: {
-                    if appState.voice.isListening {
-                        appState.stopVoiceInput()
-                    } else {
-                        appState.startVoiceInput()
+                // Mic toggle
+                Image(systemName: micIcon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(appState.isVoiceListening ? .red : .secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        let listening = appState.isVoiceListening
+                        // Defer to avoid SwiftUI gesture crash
+                        DispatchQueue.main.async {
+                            if listening {
+                                appState.stopVoiceInput()
+                            } else {
+                                appState.startVoiceInput()
+                            }
+                        }
                     }
-                }) {
-                    Image(systemName: appState.voice.isListening ? "mic.fill" : "mic")
-                        .font(.system(size: 16))
-                        .foregroundStyle(appState.voice.isListening ? .red : .secondary)
-                }
-                .buttonStyle(.plain)
 
                 // Send button
                 Button(action: {
@@ -302,6 +362,15 @@ struct InputView: View {
             }
             .padding()
             .frame(width: 350, height: 300)
+        }
+    }
+
+    private var micIcon: String {
+        if appState.isVoiceListening { return "mic.fill" }
+        switch appState.audioSource {
+        case .mic: return "mic"
+        case .desktop: return "speaker.wave.2"
+        case .both: return "mic.and.signal.meter"
         }
     }
 

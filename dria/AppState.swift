@@ -54,6 +54,7 @@ final class AppState {
     var currentQuestion: String = ""
     var currentResponse: String = ""
     var isStreaming: Bool = false
+    var isVoiceListening: Bool = false
     var chatHistory: [ChatMessage] = []
     var errorMessage: String?
 
@@ -102,6 +103,20 @@ final class AppState {
     /// Marquee text opacity: 0.0 = invisible (chameleon), 0.3 = faint, 0.6 = subtle, 1.0 = full
     var marqueeOpacity: Double = 1.0 {
         didSet { UserDefaults.standard.set(marqueeOpacity, forKey: "marqueeOpacity") }
+    }
+
+    /// Audio source for voice input
+    var audioSource: AudioSource = .mic {
+        didSet {
+            UserDefaults.standard.set(audioSource.rawValue, forKey: "audioSource")
+            voice.audioSource = audioSource
+            // Restart if currently listening with the new source
+            if voice.isListening {
+                voice.prefixText = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+                voice.stopListening()
+                voice.startListening()
+            }
+        }
     }
 
     /// Lock popover — prevent accidental clicks from opening the chat window
@@ -273,6 +288,8 @@ final class AppState {
         marqueeWidth = UserDefaults.standard.object(forKey: "marqueeWidth") as? Int ?? 30
         marqueeOpacity = UserDefaults.standard.object(forKey: "marqueeOpacity") as? Double ?? 1.0
         lockPopover = UserDefaults.standard.bool(forKey: "lockPopover")
+        audioSource = AudioSource(rawValue: UserDefaults.standard.string(forKey: "audioSource") ?? "Microphone") ?? .mic
+        voice.audioSource = audioSource
         copyMode = UserDefaults.standard.string(forKey: "copyMode") ?? "short"
 
         aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "googleai"
@@ -872,42 +889,58 @@ final class AppState {
 
     // MARK: - Voice Input
 
+    @ObservationIgnored
+    private var lastVoiceText: String = ""
+
     func startVoiceInput() {
+        print("[VOICE-APP] startVoiceInput called, permissionGranted=\(voice.permissionGranted)")
         onIconColorChange?("red")
+        isVoiceListening = true
+        lastVoiceText = ""
 
-        Task {
-            let authorized = await voice.requestPermission()
-            guard authorized else {
-                voice.isListening = false
-                onMarqueeUpdate?("⚠️ Microphone permission denied")
-                return
-            }
-            // Preserve existing text in the field
-            voice.prefixText = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 2. Save existing text
+        voice.prefixText = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // Stream partial transcription into the text field in real-time
-            voice.onPartialTranscript = { [weak self] text in
-                self?.currentQuestion = text
-                // Grow the input height for multiline transcription
-            }
-            // When stopped, keep the text — user decides when to send
-            voice.onTranscriptReady = { [weak self] text in
-                guard let self else { return }
-                if !text.isEmpty {
-                    self.currentQuestion = text
-                }
-                // Do NOT clear — keep text in field
-            }
+        // 3. Callbacks — voice transcript goes AFTER prefix text
+        let savedPrefix = voice.prefixText
+        print("[VOICE-APP] prefix='\(savedPrefix)'")
+        voice.onPartialTranscript = { [weak self] voiceText in
+            guard let self else { return }
+            self.lastVoiceText = voiceText
+            let newText = savedPrefix.isEmpty ? voiceText : savedPrefix + " " + voiceText
+            print("[VOICE-APP] onPartial: voice='\(voiceText)' → field='\(newText)'")
+            self.currentQuestion = newText
+        }
+        voice.onTranscriptReady = { [weak self] voiceText in
+            guard let self, !voiceText.isEmpty else { return }
+            let newText = savedPrefix.isEmpty ? voiceText : savedPrefix + " " + voiceText
+            print("[VOICE-APP] onReady: voice='\(voiceText)' → field='\(newText)'")
+            self.currentQuestion = newText
+        }
+
+        // 4. Start — instant if already permitted + pre-warmed
+        if voice.permissionGranted {
             voice.startListening()
+        } else {
+            Task {
+                let ok = await voice.requestPermission()
+                guard ok else {
+                    self.isVoiceListening = false
+                    onIconColorChange?("reset")
+                    return
+                }
+                // Pre-warm engine for next time
+                voice.prepareEngine()
+                voice.startListening()
+            }
         }
     }
 
     func stopVoiceInput() {
+        isVoiceListening = false
         onIconColorChange?("reset")
-        // Save transcript BEFORE stopping
         let savedText = currentQuestion
         voice.stopListening()
-        // Restore if stopListening cleared it
         if currentQuestion.isEmpty && !savedText.isEmpty {
             currentQuestion = savedText
         }
