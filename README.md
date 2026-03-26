@@ -1,243 +1,167 @@
 # dria
 
-A stealth macOS menu bar app for AI-assisted studying. Capture your screen, speak your questions, or copy exam text — dria answers using your uploaded study materials as context.
+A stealth AI study assistant for **macOS** and **Windows**. Capture your screen, speak your questions, or copy exam text — dria answers using your uploaded study materials as context.
 
 ## Download
 
-Get the latest release: [**dria-v1.7.0.dmg**](https://github.com/CelestialBrain/dria/releases/latest)
+**macOS:** [dria-v1.7.1.dmg](https://github.com/CelestialBrain/dria/releases/latest) — drag to Applications, right-click → Open
 
-Drag `dria.app` to Applications. First launch: right-click → Open (or `xattr -cr /Applications/dria.app`).
+**Windows / Cross-platform:** Build from source (see below)
 
-## Features
+## Platforms
 
-- **Menu bar AI** — short answer scrolls in marquee, full explanation in chat window
+| | macOS (`dria/`) | Windows (`desktop/`) |
+|---|---|---|
+| Framework | Swift / SwiftUI / AppKit | Tauri 2.x / Rust / HTML/CSS/JS |
+| Install | DMG download | Build from source |
+| System tray | NSStatusItem + marquee | Tray icon + answer overlay |
+| Voice | Apple Speech (on-device) | Web Speech API |
+| Desktop audio | ScreenCaptureKit | getDisplayMedia |
+| Area capture | screencapture -i | Snipping Tool |
+| Auto-update | Sparkle (EdDSA signed) | Tauri built-in |
+| Features | 40/40 | 40/40 |
+
+## Features (both platforms)
+
 - **8 AI providers** — Google AI (free), Vertex AI, Claude, OpenAI, Groq, Mistral, Ollama (local), OpenRouter/xAI
-- **Voice input** — on-device speech transcription in 10 languages with real-time waveform display
-- **Desktop audio capture** — transcribe lectures/videos via ScreenCaptureKit (Mic / Desktop / Both)
-- **Area selection capture** — ⌘⇧4-style crosshair to select just the question
 - **Study modes** — per-subject modes with custom knowledge bases and separate chat history
 - **RAG knowledge base** — import PDF, DOCX, PPTX, XLSX, HTML, RTF, Markdown, images
-- **Smart clipboard detection** — auto-detects MC, T/F, ID, Essay questions (3 sensitivity modes)
+- **Voice input** — real-time transcription with waveform display (10 languages)
+- **Desktop audio capture** — transcribe lectures/videos (Mic / Desktop / Both)
+- **Area selection capture** — select just the question (like ⌘⇧4 / Snipping Tool)
+- **Smart clipboard detection** — auto-detects MC, T/F, ID, Essay (3 sensitivity modes)
 - **Auto-answer on copy** — detected questions sent to AI immediately
+- **Two-tier answers** — short answer in overlay/marquee, full explanation in chat
 - **Practice mode** — AI generates exam questions from your materials
 - **Flashcard generator** — tap-to-flip study cards from knowledge base
-- **Export to PDF** — save conversations for study review
-- **Drag & drop files** — drop documents onto the chat window to import
-- **Stealth controls** — Ghost mode (10% opacity), lock chat window, configurable copy mode
+- **Export chat** — save conversations as PDF (macOS) or text (Windows)
+- **Drag & drop files** — drop documents to import into knowledge base
+- **Stealth / Ghost mode** — adjustable text opacity, lock chat window
 - **Configurable hotkeys** — all shortcuts customizable in Settings
-- **Auto-update** — Sparkle framework with EdDSA signed updates
+- **Canvas/LMS detection** — auto-detects Canvas, Google Forms, Quizizz, Kahoot, Blackboard, Moodle, Schoology
+- **Configurable copy mode** — short answer, full explanation, or marquee text
 - **Launch at login** — toggle in Settings
-- **Per-mode chat history** — each subject has its own conversation
-- **Canvas/LMS detection** — auto-detects exam platforms
+- **Auto-update** — one-click updates (macOS: Sparkle, Windows: Tauri updater)
 - **Local-only analytics** — opt-in usage stats, nothing leaves your device
-- **Ice/Bartender compatible**
+- **Debug log export + bug report** — one-click troubleshooting
 
 ## Hotkeys
 
-All hotkeys use `⌘⌥` (Command+Option) as modifier. Configurable in Settings.
+| macOS | Windows | Action |
+|-------|---------|--------|
+| `⌘⌥1` | `Ctrl+Alt+1` | Capture screen / select area |
+| `⌘⌥2` | `Ctrl+Alt+2` | Send to AI |
+| `⌘⌥3` | `Ctrl+Alt+3` | Toggle chat window |
+| `⌘⌥0` | Configurable | Cycle study mode |
+| `⌘⌥←` | — | Cancel AI request |
 
-| Default | Action |
-|---------|--------|
-| `⌘⌥1` | Capture screen (full or area selection) |
-| `⌘⌥2` | Send captured screen / clipboard to AI |
-| `⌘⌥3` | Open/close chat popover |
-| `⌘⌥0` | Cycle study mode |
-| `⌘⌥←` | Cancel current AI request |
-
-## Icon Status Colors
-
-| Color | Meaning |
-|-------|---------|
-| White | Idle |
-| Yellow | Screenshot captured — press ⌘⌥2 |
-| Blue | Sending to AI... |
-| Green | Answer ready (scrolling in marquee) |
-| Red | Voice recording active |
-| Cyan | Mode switched / question detected |
+All hotkeys configurable in Settings.
 
 ## Setup
 
-### Requirements
+### macOS
 
-- macOS 14.0+
-- Xcode 16+ (to build from source)
-
-### Install from DMG
-
-1. Download [dria-v1.7.0.dmg](https://github.com/CelestialBrain/dria/releases/latest)
+**Install from DMG:**
+1. Download [dria-v1.7.1.dmg](https://github.com/CelestialBrain/dria/releases/latest)
 2. Drag `dria.app` to Applications
 3. First launch: right-click → Open (bypasses Gatekeeper)
-4. Go to Settings → AI Model → paste your API key
+4. Settings → AI Model → paste your API key
 
-### Build from Source
-
+**Build from source:**
 ```bash
 git clone https://github.com/CelestialBrain/dria.git
 cd dria
 xcodebuild -project dria.xcodeproj -scheme dria -configuration Release build
 ```
 
-Or open `dria.xcodeproj` in Xcode and press `⌘R`.
+**Requirements:** macOS 14.0+, Xcode 16+ (build only)
+
+### Windows / Cross-platform
+
+```bash
+git clone https://github.com/CelestialBrain/dria.git
+cd dria/desktop
+npm install
+npx tauri dev        # development
+npx tauri build      # production (.exe / .msi)
+```
+
+**Requirements:** Node.js 18+, Rust 1.77+, [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ### AI Provider Setup
 
-**Google AI (free, easiest):**
-1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. Create a free API key (no credit card needed)
-3. In dria Settings → AI Model → select "Google AI (API Key)" → paste key
-
-**Vertex AI (recommended for heavy use):**
-1. Create a Google Cloud project with Vertex AI API enabled
-2. Create a service account with Vertex AI User role
-3. Download the JSON key file to `~/Library/Application Support/dria/sa-key.json`
-4. In dria Settings → AI Model → select "Vertex AI (Service Account)"
-
-**Claude (Anthropic):**
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-2. In dria Settings → AI Model → select "Claude" → paste key
-
-**OpenAI / Groq / Mistral / xAI:**
-1. Get an API key from the provider
-2. In dria Settings → AI Model → select provider preset → paste key
-
-**Ollama (local, free, offline):**
-1. Install [Ollama](https://ollama.com) and pull a model (`ollama pull llama3.2`)
-2. In dria Settings → AI Model → select "Ollama (Local)"
-3. No API key needed — runs entirely on your machine
-
-**OpenRouter (200+ models):**
-1. Get an API key from [openrouter.ai](https://openrouter.ai)
-2. In dria Settings → AI Model → select "OpenRouter" → paste key
-
-### Permissions
-
-- **Screen Recording** — required for screen capture. Grant in System Settings → Privacy & Security → Screen & System Audio Recording
-- **Microphone** — required for voice input. Prompted on first use
-- **Speech Recognition** — required for voice transcription. Prompted on first use
-
-If the app crashes on launch after denying a permission, run:
-```bash
-tccutil reset All com.dev.dria
-```
+| Provider | Key from | Cost |
+|----------|----------|------|
+| **Google AI** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Free (500 req/day) |
+| **Vertex AI** | Google Cloud Console (service account JSON) | Pay-per-use |
+| **Claude** | [console.anthropic.com](https://console.anthropic.com) | Pay-per-use |
+| **OpenAI** | [platform.openai.com](https://platform.openai.com) | Pay-per-use |
+| **Groq** | [console.groq.com](https://console.groq.com) | Free tier |
+| **Mistral** | [console.mistral.ai](https://console.mistral.ai) | Free tier |
+| **Ollama** | [ollama.com](https://ollama.com) — `ollama pull llama3.2` | Free (local) |
+| **OpenRouter** | [openrouter.ai](https://openrouter.ai) | Pay-per-use (200+ models) |
 
 ## Usage
 
 ### Study Modes
-
-Create a mode for each subject in Settings → Modes:
-1. Click "+" to create a new mode
-2. Name it, pick an icon, set keywords for auto-detection
-3. Add files — PDF reviewers, DOCX notes, PPTX lectures, images
-4. dria chunks and indexes the text for RAG context
+1. Settings → Modes → "+" to create
+2. Name it, set keywords for auto-detection
+3. Add files (PDF, DOCX, PPTX, images, etc.)
+4. dria chunks and indexes for RAG context
 
 ### During an Exam
-
-1. **⌘⌥1** — capture screen or select area (icon turns yellow)
-2. **⌘⌥2** — send to AI (icon turns blue → green when answer arrives)
-3. Short answer scrolls in menu bar — click to copy
-4. Open popover for full explanation
-5. **⌘⌥3** — open chat to ask follow-up questions
+1. Capture screen or select area → icon turns yellow
+2. Send to AI → icon turns blue → green when answer arrives
+3. Short answer appears in overlay — click to copy
+4. Open chat for full explanation + follow-ups
 
 ### Voice Input
+1. Click mic icon → speak → text appears in real-time
+2. Right-click mic for audio source (Mic / Desktop / Both)
+3. Pause between sentences — previous text preserved
+4. Click mic to stop → hit Enter to send
 
-1. Click the mic icon in the chat bar (or right-click to pick audio source)
-2. Speak — text appears in real-time with waveform animation
-3. Pause between sentences — previous text is preserved
-4. Click mic again to stop — text stays in the field
-5. Hit Enter to send
-
-Audio sources: **Microphone** (your voice), **Desktop Audio** (lectures/videos), **Mic + Desktop** (both)
-
-### Auto-Answer (Clipboard Mode)
-
-1. Click "Watching" button in the chat bar
-2. Copy any exam question from Canvas, Google Forms, etc.
-3. dria detects the question type and answers automatically
-4. Sensitivity: Normal / Sensitive / Catch All (in Settings → General)
-
-### Tools Menu (wrench icon)
-
-- **Practice Question** — AI generates an exam question from your materials
-- **Flashcards** — tap-to-flip study cards
-- **Export to PDF** — save chat history as PDF
-- **Audio Source** — switch between Mic / Desktop / Both
-
-### Stealth
-
-Settings → Stealth:
-- **Ghost mode** — marquee text at 10% opacity, nearly invisible
-- **Lock chat window** — prevents accidental popover opens
-- **Copy mode** — choose what's copied when clicking the icon (short answer / full / marquee)
-
-## Supported File Types
-
-| Format | Extensions |
-|--------|-----------|
-| Markdown | `.md` |
-| Plain text | `.txt` |
-| PDF | `.pdf` |
-| Word | `.docx` |
-| PowerPoint | `.pptx` |
-| Excel | `.xlsx` |
-| HTML | `.html`, `.htm` |
-| RTF | `.rtf`, `.rtfd` |
-| Images (OCR) | `.jpg`, `.png`, `.heic`, `.tiff` |
-
-## Bug Reports
-
-1. Go to Settings → General → Troubleshooting
-2. Click **Export Debug Logs** — saves a `.txt` file with your settings and crash info
-3. Click **Report Bug on GitHub** — opens an issue template
-4. Paste the debug log into the issue
+### Auto-Answer
+1. Click "Watching" in the toolbar
+2. Copy any exam question → dria detects type and answers automatically
 
 ## Architecture
 
 ```
 dria/
-├── driaApp.swift              # App entry, menu bar, marquee, popover
-├── AppState.swift             # Central state, hotkeys, AI, voice, modes
-├── Models/
-│   ├── ChatMessage.swift      # Chat messages (class, not struct)
-│   ├── StudyMode.swift        # Mode definitions + built-in LLAW 113
-│   ├── ModeFile.swift         # File metadata
-│   ├── KnowledgeChunk.swift   # Indexed text chunks
-│   └── AnalysisResult.swift   # Question analysis
-├── Services/
-│   ├── GeminiService.swift         # 8 AI providers (Vertex, Google, Claude, OpenAI-compat)
-│   ├── VoiceInputService.swift     # Speech + ScreenCaptureKit audio
-│   ├── ModeManager.swift           # Mode CRUD, file import, chunks
-│   ├── FileImporter.swift          # Multi-format text extraction
-│   ├── KnowledgeBaseService.swift  # RAG context building
-│   ├── ScreenCaptureService.swift  # Silent + area capture (CGContext)
-│   ├── ClipboardService.swift      # Clipboard monitoring + detection
-│   ├── QuestionDetector.swift      # MC/TF/ID/Essay classification
-│   ├── HotkeyService.swift         # Carbon global hotkeys
-│   ├── AnswerCache.swift           # Cache repeated questions
-│   ├── AnalyticsService.swift      # Local-only opt-in analytics
-│   ├── OCRService.swift            # Apple Vision text recognition
-│   ├── FocusDetector.swift         # Window title + LMS detection
-│   ├── KeychainService.swift       # API key storage
-│   └── UpdateChecker.swift         # Sparkle auto-updater
-├── Views/
-│   ├── PopoverView.swift           # Chat window + message bubbles
-│   ├── SettingsView.swift          # 4-tab settings
-│   ├── InputView.swift             # Chat input + voice wave + tools
-│   └── ResponseView.swift          # AI response display
-└── Resources/
-    └── CaseDigests/                # Bundled LLAW 113 case files (34 cases)
+├── dria/                    ← macOS (Swift/SwiftUI)
+│   ├── driaApp.swift
+│   ├── AppState.swift
+│   ├── Models/
+│   ├── Services/
+│   ├── Views/
+│   └── Resources/CaseDigests/
+├── dria.xcodeproj
+├── desktop/                 ← Windows/cross-platform (Tauri)
+│   ├── src/
+│   │   ├── index.html
+│   │   ├── css/app.css
+│   │   └── js/{app,modes,tools}.js
+│   └── src-tauri/
+│       ├── src/lib.rs
+│       ├── Cargo.toml
+│       └── tauri.conf.json
+├── appcast.xml              ← Sparkle update feed
+├── README.md
+└── LICENSE
 ```
+
+## Bug Reports
+
+1. Settings → General → **Export Debug Logs**
+2. Settings → General → **Report Bug** → opens GitHub Issues
+3. Paste debug log into the issue
 
 ## Built With
 
-- Swift / SwiftUI / AppKit
-- Google Generative AI Swift SDK
-- Sparkle 2.9 (auto-updater)
-- Apple Speech Framework (on-device transcription)
-- ScreenCaptureKit (desktop audio)
-- Apple Vision Framework (OCR)
-- PDFKit
-- Carbon (global hotkeys)
-- ServiceManagement (launch at login)
+**macOS:** Swift, SwiftUI, AppKit, Sparkle 2.9, Apple Speech, ScreenCaptureKit, Vision, PDFKit, Carbon
+
+**Windows:** Tauri 2.x, Rust, HTML/CSS/JS, Web Speech API, screenshots crate, arboard
 
 ## License
 
