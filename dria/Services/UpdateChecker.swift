@@ -14,7 +14,7 @@ final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
 
     // MARK: - Observable State
 
-    var canCheckForUpdates: Bool = false
+    var canCheckForUpdates: Bool = true
     var updateAvailable: Bool = false
     var latestVersion: String = ""
     var isChecking: Bool = false
@@ -37,27 +37,25 @@ final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
         }
     }
 
-    // MARK: - Sparkle (not tracked by @Observable)
+    // MARK: - Sparkle (lazy, not created on init)
 
     @ObservationIgnored
-    private var updaterController: SPUStandardUpdaterController!
+    private var _updaterController: SPUStandardUpdaterController?
 
     @ObservationIgnored
     private var canCheckObservation: NSKeyValueObservation?
 
-    // MARK: - Init
-
-    override init() {
-        super.init()
-
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+    private var updaterController: SPUStandardUpdaterController {
+        if let existing = _updaterController { return existing }
+        let controller = SPUStandardUpdaterController(
+            startingUpdater: false,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
+        _updaterController = controller
 
-        // Mirror Sparkle's KVO property to our @Observable
-        canCheckObservation = updaterController.updater.observe(
+        // Mirror KVO
+        canCheckObservation = controller.updater.observe(
             \.canCheckForUpdates,
             options: [.initial, .new]
         ) { [weak self] updater, _ in
@@ -67,8 +65,24 @@ final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
             }
         }
 
-        updaterController.updater.updateCheckInterval = 4 * 60 * 60
-        updaterController.updater.automaticallyChecksForUpdates = true
+        controller.updater.updateCheckInterval = 4 * 60 * 60
+        controller.updater.automaticallyChecksForUpdates = true
+
+        // Start updater
+        try? controller.updater.start()
+
+        return controller
+    }
+
+    // MARK: - Init
+
+    override init() {
+        super.init()
+
+        // Start Sparkle after a delay — avoids TCC crash on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            _ = self?.updaterController
+        }
     }
 
     deinit {

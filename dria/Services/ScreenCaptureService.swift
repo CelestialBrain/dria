@@ -48,21 +48,33 @@ struct ScreenCaptureService {
                 // Clean up
                 try? FileManager.default.removeItem(atPath: tempFile)
 
-                // Scale down for AI
+                // Scale down for AI — use CGImage (thread-safe, no lockFocus)
                 let maxWidth: CGFloat = 1600
                 let scale = min(maxWidth / original.size.width, 1.0)
                 let finalImage: NSImage
                 if scale >= 1.0 {
                     finalImage = original
                 } else {
-                    let newSize = NSSize(width: original.size.width * scale, height: original.size.height * scale)
-                    let resized = NSImage(size: newSize)
-                    resized.lockFocus()
-                    original.draw(in: NSRect(origin: .zero, size: newSize),
-                                  from: NSRect(origin: .zero, size: original.size),
-                                  operation: .copy, fraction: 1.0)
-                    resized.unlockFocus()
-                    finalImage = resized
+                    guard let cgImage = original.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                        continuation.resume(returning: (original, nil))
+                        return
+                    }
+                    let newW = Int(CGFloat(cgImage.width) * scale)
+                    let newH = Int(CGFloat(cgImage.height) * scale)
+                    guard let ctx = CGContext(data: nil, width: newW, height: newH,
+                                              bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                        continuation.resume(returning: (original, nil))
+                        return
+                    }
+                    ctx.interpolationQuality = .high
+                    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: newW, height: newH))
+                    if let scaled = ctx.makeImage() {
+                        finalImage = NSImage(cgImage: scaled, size: NSSize(width: newW, height: newH))
+                    } else {
+                        finalImage = original
+                    }
                 }
 
                 continuation.resume(returning: (finalImage, nil))
@@ -103,45 +115,36 @@ struct ScreenCaptureService {
         // Crosshair line length: 1.8x radius
         let crosshairLength = radius * 1.8
 
-        // Create the marked image
-        let markedImage = NSImage(size: imageSize)
-        markedImage.lockFocus()
+        // Create marked image using CGContext (thread-safe, no lockFocus)
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return image }
+        let w = cgImage.width, h = cgImage.height
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                   bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
 
-        // Draw original image
-        image.draw(in: NSRect(origin: .zero, size: imageSize),
-                   from: NSRect(origin: .zero, size: imageSize),
-                   operation: .copy, fraction: 1.0)
+        // Draw original
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
 
-        // Set color: red with 0.9 alpha
-        let markerColor = NSColor.red.withAlphaComponent(0.9)
-        markerColor.setStroke()
+        // Convert cursor point to CGImage coordinates (CGImage is top-left origin flipped)
+        let cx = cursorPoint.x * CGFloat(w) / imageSize.width
+        let cy = (imageSize.height - cursorPoint.y) * CGFloat(h) / imageSize.height // flip Y
+        let r = radius * CGFloat(w) / imageSize.width
+        let lw = lineWidth * CGFloat(w) / imageSize.width
+        let cl = crosshairLength * CGFloat(w) / imageSize.width
 
-        // Draw circle
-        let circleRect = NSRect(
-            x: cursorPoint.x - radius,
-            y: cursorPoint.y - radius,
-            width: radius * 2,
-            height: radius * 2
-        )
-        let circlePath = NSBezierPath(ovalIn: circleRect)
-        circlePath.lineWidth = lineWidth
-        circlePath.stroke()
+        // Draw red circle + crosshair
+        ctx.setStrokeColor(CGColor(red: 1, green: 0, blue: 0, alpha: 0.9))
+        ctx.setLineWidth(lw)
+        ctx.strokeEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
+        ctx.move(to: CGPoint(x: cx - cl, y: cy))
+        ctx.addLine(to: CGPoint(x: cx + cl, y: cy))
+        ctx.move(to: CGPoint(x: cx, y: cy - cl))
+        ctx.addLine(to: CGPoint(x: cx, y: cy + cl))
+        ctx.strokePath()
 
-        // Draw crosshair lines through the circle
-        let horizontalLine = NSBezierPath()
-        horizontalLine.move(to: NSPoint(x: cursorPoint.x - crosshairLength, y: cursorPoint.y))
-        horizontalLine.line(to: NSPoint(x: cursorPoint.x + crosshairLength, y: cursorPoint.y))
-        horizontalLine.lineWidth = lineWidth
-        horizontalLine.stroke()
-
-        let verticalLine = NSBezierPath()
-        verticalLine.move(to: NSPoint(x: cursorPoint.x, y: cursorPoint.y - crosshairLength))
-        verticalLine.line(to: NSPoint(x: cursorPoint.x, y: cursorPoint.y + crosshairLength))
-        verticalLine.lineWidth = lineWidth
-        verticalLine.stroke()
-
-        markedImage.unlockFocus()
-        return markedImage
+        guard let result = ctx.makeImage() else { return image }
+        return NSImage(cgImage: result, size: imageSize)
     }
 
     /// Interactive screen capture (user selects area) — saves to file to avoid Clop interception

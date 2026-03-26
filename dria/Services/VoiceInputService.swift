@@ -126,6 +126,7 @@ final class VoiceInputService {
         do {
             try audioEngine.start()
         } catch {
+            audioEngine.inputNode.removeTap(onBus: 0)
             isListening = false
             return
         }
@@ -134,14 +135,13 @@ final class VoiceInputService {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let result {
-                    // bestTranscription contains the FULL transcript from start
-                    // It does NOT lose previous lines — Apple rebuilds the entire string each time
                     self.transcript = result.bestTranscription.formattedString
-                    // Combine with any prefix text that was in the field before
                     let combined = self.prefixText.isEmpty
                         ? self.transcript
                         : self.prefixText + "\n" + self.transcript
                     self.onPartialTranscript?(combined)
+                }
+                if let error {
                 }
                 if let error, !self.isListening {
                     _ = error
@@ -154,25 +154,26 @@ final class VoiceInputService {
     func stopListening() {
         guard isListening else { return }
 
-        // End audio first, then stop engine
-        recognitionRequest?.endAudio()
+        // Save transcript before any cleanup
+        let savedTranscript = transcript
+        let combined = prefixText.isEmpty ? savedTranscript : prefixText + "\n" + savedTranscript
 
+        // End audio
+        recognitionRequest?.endAudio()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
-
-        // Wait a moment for final recognition result before canceling
-        let finalTranscript = transcript
-        recognitionTask?.finish() // finish() waits for final result, cancel() doesn't
+        recognitionTask?.finish()
         recognitionRequest = nil
 
         isListening = false
 
-        // Fire the final transcript callback — DO NOT clear the text
-        let trimmed = finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Fire final callback with saved text
+        let trimmed = combined.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             onTranscriptReady?(trimmed)
         }
-        // Don't nil out recognitionTask here — let it complete naturally
+
+        // Cleanup task reference after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.recognitionTask = nil
         }

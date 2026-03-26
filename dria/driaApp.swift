@@ -94,6 +94,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
             self?.statusItem.button?.image = Self.menuBarImage(for: mode)
         }
 
+        appState.onIconColorChange = { [weak self] color in
+            guard let self else { return }
+            switch color {
+            case "red": self.setIconColor(.systemRed)
+            case "yellow": self.setIconColor(.systemYellow)
+            case "blue": self.setIconColor(.systemBlue)
+            case "green": self.setIconColor(.systemGreen)
+            case "reset": self.setIconColor(.labelColor)
+            default: self.setIconColor(.labelColor)
+            }
+        }
+
         appState.onOpenPopover = { [weak self] in
             self?.showInlineInput()
         }

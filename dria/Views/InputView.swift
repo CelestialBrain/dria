@@ -6,6 +6,94 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - Chat Input Field (Enter = send, Shift+Enter = newline)
+
+struct ChatInputField: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var height: CGFloat
+    var placeholder: String
+    var onSubmit: () -> Void
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        let textView = scrollView.documentView as! NSTextView
+        textView.delegate = context.coordinator
+        textView.isRichText = false
+        textView.font = NSFont.systemFont(ofSize: 13)
+        textView.textColor = .labelColor
+        textView.backgroundColor = .clear
+        textView.isVerticallyResizable = true
+        textView.textContainerInset = NSSize(width: 0, height: 0)
+        textView.textContainer?.widthTracksTextView = true
+        textView.setAccessibilityPlaceholderValue(placeholder)
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        let textView = scrollView.documentView as! NSTextView
+        if textView.string != text {
+            // Prevent coordinator from fighting this update
+            context.coordinator.isUpdating = true
+            textView.string = text
+            context.coordinator.updateHeight(textView)
+            context.coordinator.isUpdating = false
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: ChatInputField
+        var isUpdating = false
+        private var lastHeight: CGFloat = 18
+
+        init(_ parent: ChatInputField) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard !isUpdating else { return }
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+            updateHeight(textView)
+        }
+
+        func updateHeight(_ textView: NSTextView) {
+            guard let layoutManager = textView.layoutManager,
+                  let container = textView.textContainer else { return }
+            layoutManager.ensureLayout(for: container)
+            let usedRect = layoutManager.usedRect(for: container)
+            let lineHeight: CGFloat = 18
+            let visualLines = max(1, Int(ceil(usedRect.height / lineHeight)))
+            let newHeight = min(54, CGFloat(visualLines) * lineHeight)
+            // Only update if actually changed — prevents loop
+            guard abs(newHeight - lastHeight) > 1 else { return }
+            lastHeight = newHeight
+            DispatchQueue.main.async {
+                self.parent.height = newHeight
+            }
+        }
+
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                // Check if Shift is held
+                if NSEvent.modifierFlags.contains(.shift) {
+                    textView.insertNewlineIgnoringFieldEditor(nil)
+                    return true
+                }
+                // Enter without shift = submit
+                parent.onSubmit()
+                return true
+            }
+            return false
+        }
+    }
+}
+
 // MARK: - Voice Wave Animation
 
 struct VoiceWaveView: View {
@@ -35,6 +123,7 @@ struct VoiceWaveView: View {
 
 struct InputView: View {
     @Environment(AppState.self) private var appState
+    @State private var inputHeight: CGFloat = 18
     @State private var showFlashcards = false
     @State private var flashcards: [(front: String, back: String)] = []
     @State private var flashcardIndex = 0
@@ -125,14 +214,10 @@ struct InputView: View {
                         ? "Ask anything..."
                         : "Ask about \(appState.activeMode.name)...")
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    TextField(placeholder, text: $state.currentQuestion, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .onSubmit {
-                            Task { await appState.submitQuestion() }
-                        }
+                ChatInputField(text: $state.currentQuestion, height: $inputHeight, placeholder: placeholder) {
+                    Task { await appState.submitQuestion() }
                 }
-                .frame(minHeight: 20, maxHeight: appState.currentQuestion.isEmpty ? 20 : 54)
+                .frame(height: inputHeight)
 
                 // Mic button
                 Button(action: {

@@ -130,6 +130,7 @@ final class AppState {
 
     // MARK: - Callbacks
     var onMarqueeUpdate: ((String?) -> Void)?
+    var onIconColorChange: ((String) -> Void)? // "red", "yellow", "blue", "green", "reset"
     var onModeChanged: ((StudyMode) -> Void)?
     var onAbort: (() -> Void)?
     var onAITaskStarted: ((Task<Void, Never>) -> Void)?
@@ -684,6 +685,7 @@ final class AppState {
             chatHistory.append(ChatMessage(role: .assistant, content: stealthResponse))
         } catch {
             onMarqueeUpdate?("⚠️ \(error.localizedDescription)")
+            AnalyticsService.shared.track(.aiError)
         }
 
         isProcessing = false
@@ -759,6 +761,12 @@ final class AppState {
 
     func submitQuestion() async {
         guard !isStreaming else { return } // Prevent double-submit
+
+        // Stop voice if active — must happen before any other work
+        if voice.isListening {
+            stopVoiceInput()
+        }
+
         if chatHistory.count > 100 { chatHistory.removeFirst(chatHistory.count - 80) }
         let question = currentQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
@@ -780,8 +788,9 @@ final class AppState {
 
         // Include clipboard text as extra context if available
         let (clipText, _) = clipboard.readCurrentClipboard()
-        var contextString = knowledgeBase?.buildContext(for: question).contextString ?? ""
-        let sourceFiles = knowledgeBase?.buildContext(for: question).sourceFiles ?? []
+        let kbContext = knowledgeBase?.buildContext(for: question)
+        var contextString = kbContext?.contextString ?? ""
+        let sourceFiles = kbContext?.sourceFiles ?? []
         if let clipText, !clipText.isEmpty {
             contextString += "\n\n=== CLIPBOARD TEXT ===\n\(clipText)"
         }
@@ -850,10 +859,13 @@ final class AppState {
     // MARK: - Voice Input
 
     func startVoiceInput() {
+        onIconColorChange?("red")
+
         Task {
             let authorized = await voice.requestPermission()
             guard authorized else {
-                onMarqueeUpdate?("⚠️ Speech permission denied")
+                voice.isListening = false
+                onMarqueeUpdate?("⚠️ Microphone permission denied")
                 return
             }
             // Preserve existing text in the field
@@ -862,17 +874,29 @@ final class AppState {
             // Stream partial transcription into the text field in real-time
             voice.onPartialTranscript = { [weak self] text in
                 self?.currentQuestion = text
+                // Grow the input height for multiline transcription
             }
             // When stopped, keep the text — user decides when to send
             voice.onTranscriptReady = { [weak self] text in
-                self?.currentQuestion = text
+                guard let self else { return }
+                if !text.isEmpty {
+                    self.currentQuestion = text
+                }
+                // Do NOT clear — keep text in field
             }
             voice.startListening()
         }
     }
 
     func stopVoiceInput() {
+        onIconColorChange?("reset")
+        // Save transcript BEFORE stopping
+        let savedText = currentQuestion
         voice.stopListening()
+        // Restore if stopListening cleared it
+        if currentQuestion.isEmpty && !savedText.isEmpty {
+            currentQuestion = savedText
+        }
     }
 
     // MARK: - Practice Mode
