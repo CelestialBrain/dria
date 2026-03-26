@@ -6,7 +6,10 @@
 import AppKit
 import Foundation
 
-struct ChatMessage: Identifiable, Codable {
+/// Reference type to avoid expensive struct copies in @Observable arrays.
+/// SwiftUI was triggering initializeWithCopy on every render cycle,
+/// causing 100% CPU loops with struct-based messages.
+final class ChatMessage: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     let role: Role
     var content: String
@@ -24,6 +27,14 @@ struct ChatMessage: Identifiable, Codable {
         self.content = content
         self.timestamp = Date()
         self.referencedSources = referencedSources
+    }
+
+    static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 
@@ -53,11 +64,9 @@ final class AttachmentCache {
     func clear() { entries.removeAll() }
 
     private func evictIfNeeded() {
-        // Remove expired entries
         let now = Date()
         entries = entries.filter { now.timeIntervalSince($0.value.timestamp) < maxAge }
 
-        // Cap count — remove oldest
         if entries.count > maxEntries {
             let sorted = entries.sorted { $0.value.timestamp < $1.value.timestamp }
             let toRemove = sorted.prefix(entries.count - maxEntries)
