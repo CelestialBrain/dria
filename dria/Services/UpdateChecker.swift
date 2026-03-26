@@ -87,6 +87,10 @@ final class UpdateChecker: NSObject, @preconcurrency SPUUpdaterDelegate {
 
     // MARK: - SPUUpdaterDelegate
 
+    nonisolated func feedURLString(for updater: SPUUpdater) -> String? {
+        "https://github.com/CelestialBrain/dria/releases/latest/download/appcast.xml"
+    }
+
     nonisolated func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         Task { @MainActor in
             self.updateAvailable = true
