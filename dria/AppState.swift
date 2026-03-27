@@ -59,25 +59,28 @@ final class AppState {
     var isVoiceListening: Bool = false
     @ObservationIgnored
     var chatHistory: [ChatMessage] = []
-    /// Change this to refresh chat views. Use notifyChatChanged() — never set directly from button actions.
-    var chatUpdateTrigger: UUID = UUID()
+    @ObservationIgnored
     var errorMessage: String?
 
-    /// Safely notify SwiftUI that chat changed — debounced, never called from gesture handlers
+    /// Notify views that chat changed — uses NotificationCenter to avoid observation loops
     @ObservationIgnored
     private var chatNotifyScheduled = false
+    static let chatDidChange = Notification.Name("driaChat")
     func notifyChatChanged() {
         guard !chatNotifyScheduled else { return }
         chatNotifyScheduled = true
         DispatchQueue.main.async { [weak self] in
             self?.chatNotifyScheduled = false
-            self?.chatUpdateTrigger = UUID()
+            NotificationCenter.default.post(name: AppState.chatDidChange, object: nil)
         }
     }
 
     // MARK: - Stealth Mode
+    @ObservationIgnored
     var capturedImage: NSImage?
+    @ObservationIgnored
     var stealthResponse: String = ""
+    @ObservationIgnored
     var isProcessing: Bool = false
 
     // MARK: - Modes

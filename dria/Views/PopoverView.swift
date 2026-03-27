@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import Combine
 import UniformTypeIdentifiers
 
 /// Shows custom DRIA icon for "sparkles", SF Symbol for everything else
@@ -103,49 +104,8 @@ struct PopoverView: View {
 
             Divider()
 
-            // Chat area — reads chatUpdateTrigger (not chatHistory) to trigger refreshes
-            let _ = appState.chatUpdateTrigger
-            if appState.chatHistory.isEmpty && !appState.isStreaming {
-                EmptyStateView(modeName: appState.activeMode.name)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
-                            let messages = Array(appState.chatHistory.suffix(20))
-                            ForEach(messages, id: \.id) { message in
-                                MessageBubble(message: message)
-                            }
-
-                            if appState.isStreaming {
-                                ResponseView(text: appState.currentResponse, isStreaming: true)
-                                    .id("streaming")
-                            }
-
-                            if let error = appState.errorMessage {
-                                HStack {
-                                    Image(systemName: "exclamationmark.triangle")
-                                    Text(error)
-                                }
-                                .foregroundStyle(.red)
-                                .font(.caption)
-                                .padding(.horizontal)
-                            }
-
-                            Color.clear.frame(height: 1).id("bottom")
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 12)
-                    }
-                    .onAppear {
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                    .onChange(of: appState.chatUpdateTrigger) {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo("bottom", anchor: .bottom)
-                        }
-                    }
-                }
-            }
+            // Chat area — driven by NotificationCenter, NOT @Observable
+            ChatArea(appState: appState)
 
             Divider()
 
@@ -262,5 +222,72 @@ private struct MessageBubble: View {
 
             if message.role == .assistant { Spacer(minLength: 60) }
         }
+    }
+}
+
+/// Chat area that refreshes via NotificationCenter — zero @Observable dependency
+struct ChatArea: View {
+    let appState: AppState
+    @State private var messages: [ChatMessage] = []
+    @State private var streaming = false
+    @State private var response = ""
+    @State private var error: String?
+    @State private var scrollTarget = 0
+
+    var body: some View {
+        Group {
+            if messages.isEmpty && !streaming {
+                EmptyStateView(modeName: appState.activeMode.name)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            ForEach(messages, id: \.id) { message in
+                                MessageBubble(message: message)
+                            }
+
+                            if streaming {
+                                ResponseView(text: response, isStreaming: true)
+                                    .id("streaming")
+                            }
+
+                            if let error {
+                                HStack {
+                                    Image(systemName: "exclamationmark.triangle")
+                                    Text(error)
+                                }
+                                .foregroundStyle(.red)
+                                .font(.caption)
+                                .padding(.horizontal)
+                            }
+
+                            Color.clear.frame(height: 1).id("bottom")
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 12)
+                    }
+                    .onAppear {
+                        refresh()
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                    .onChange(of: scrollTarget) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppState.chatDidChange).throttle(for: .milliseconds(200), scheduler: RunLoop.main, latest: true)) { _ in
+            refresh()
+        }
+    }
+
+    private func refresh() {
+        messages = Array(appState.chatHistory.suffix(20))
+        streaming = appState.isStreaming
+        response = appState.currentResponse
+        error = appState.errorMessage
+        scrollTarget += 1
     }
 }
