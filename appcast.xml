@@ -7,6 +7,14 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.4</title>
+            <description><![CDATA[<ul><li>Permanent fix for 100% CPU — ChatArea uses @State snapshots + NotificationCenter</li></ul>]]></description>
+            <pubDate>Thu, 27 Mar 2026 04:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.4/dria-v1.7.4.dmg" sparkle:version="15" sparkle:shortVersionString="1.7.4" length="2835933" type="application/octet-stream" sparkle:edSignature="1JX180kn0/VZlkeiUhuq/cAPoZ0cwIMLcd0U0mfrJ/Bc3k0vjkye9m4sFB5c1HVsB//MHmUm9RtPsEgQ+4H3CA==" />
+        </item>
+
+        <item>
             <title>dria v1.7.3</title>
             <description><![CDATA[<ul><li>Fix 100% CPU during AI streaming (currentResponse + isStreaming now ObservationIgnored)</li></ul>]]></description>
             <pubDate>Thu, 27 Mar 2026 03:00:00 +0000</pubDate>
