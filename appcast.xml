@@ -7,6 +7,14 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.3</title>
+            <description><![CDATA[<ul><li>Fix 100% CPU during AI streaming (currentResponse + isStreaming now ObservationIgnored)</li></ul>]]></description>
+            <pubDate>Thu, 27 Mar 2026 03:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.3/dria-v1.7.3.dmg" sparkle:version="14" sparkle:shortVersionString="1.7.3" length="2840230" type="application/octet-stream" sparkle:edSignature="XTAygWGfCX3x3eYtQzHouAk243Zw+AKknQa0l0EcdJqCp+F55AAF4wMPgQYwQeUcHcuMjHDXoepVwJalW511Cg==" />
+        </item>
+
+        <item>
             <title>dria v1.7.2</title>
             <description><![CDATA[<ul><li>Hover capture (⌘⌥4): instant capture around cursor</li><li>Auto-answer on copy now works on launch</li><li>Configurable capture zone size</li></ul>]]></description>
             <pubDate>Thu, 27 Mar 2026 02:00:00 +0000</pubDate>
