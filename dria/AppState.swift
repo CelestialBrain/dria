@@ -52,7 +52,9 @@ private func stripMarkdown(_ text: String) -> String {
 final class AppState {
     // MARK: - UI State
     var currentQuestion: String = ""
+    @ObservationIgnored
     var currentResponse: String = ""
+    @ObservationIgnored
     var isStreaming: Bool = false
     var isVoiceListening: Bool = false
     @ObservationIgnored
@@ -907,6 +909,7 @@ final class AppState {
 
         isStreaming = true
         currentResponse = ""
+        notifyChatChanged()
         errorMessage = nil
 
         var assistantMessage = ChatMessage(role: .assistant, content: "", referencedSources: sourceFiles)
@@ -921,6 +924,7 @@ final class AppState {
                 let now = Date()
                 if now.timeIntervalSince(lastUIUpdate) > 0.2 {
                     currentResponse = buffer
+                    notifyChatChanged()
                     lastUIUpdate = now
                 }
             }
@@ -935,6 +939,7 @@ final class AppState {
 
         chatHistory.append(assistantMessage)
         isStreaming = false
+        notifyChatChanged()
         persistChatHistory()
     }
 
@@ -1039,6 +1044,7 @@ final class AppState {
 
         isStreaming = true
         currentResponse = ""
+        notifyChatChanged()
         let msg = ChatMessage(role: .user, content: "Generate a practice question")
         chatHistory.append(msg)
 
@@ -1049,7 +1055,7 @@ final class AppState {
             for try await chunk in stream {
                 buffer += chunk
                 let now = Date()
-                if now.timeIntervalSince(lastUI) > 0.2 { currentResponse = buffer; lastUI = now }
+                if now.timeIntervalSince(lastUI) > 0.2 { currentResponse = buffer; notifyChatChanged(); lastUI = now }
             }
             currentResponse = stripMarkdown(buffer)
             chatHistory.append(ChatMessage(role: .assistant, content: currentResponse))
@@ -1058,6 +1064,7 @@ final class AppState {
             errorMessage = error.localizedDescription
         }
         isStreaming = false
+        notifyChatChanged()
         persistChatHistory()
     }
 
