@@ -7,6 +7,19 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.6</title>
+            <description><![CDATA[<ul>
+                <li>Security: LLM bridge now binds to loopback only via NWParameters.requiredInterfaceType = .loopback + acceptLocalOnly, with belt-and-braces remote-endpoint check rejecting any non-127.0.0.1/::1 connection. (Audit found acceptLocalOnly alone wasn't loopback-only on hosts with VPN/Docker bridges.)</li>
+                <li>Security: CORS wildcard replaced with explicit origin allowlist covering localhost dev hosts + Office taskpane origins (officeapps.live.com, office.com, outlook.office.com, outlook.office365.com, officeusercontent.com). Vary: Origin set; no token reflected in CORS-readable headers.</li>
+                <li>Security: bridge auth token moved to login Keychain with kSecAttrAccessibleWhenUnlockedThisDeviceOnly. One-time migration from on-disk file. New "Rotate" button in Settings to invalidate cached tokens.</li>
+                <li>Roadmap published (ROADMAP.md) with prioritized hardening backlog from the security audit.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 16:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.6/dria-v1.7.6.dmg" sparkle:version="17" sparkle:shortVersionString="1.7.6" length="2946427" type="application/octet-stream" sparkle:edSignature="Mc+VsS8wZRw0CrH6+jk8WaAzuywicHa5qCSqD751hDJ0QyaM2abL7MbvwcRgkujkBJhGR1lIAmY0PDV+AZhRAQ==" />
+        </item>
+
+        <item>
             <title>dria v1.7.5</title>
             <description><![CDATA[<ul>
                 <li>Refactor: AppState split into focused helpers (ChatPersistence, AIProviderFactory, ChatPDFExporter); SettingsView split into one file per tab.</li>
