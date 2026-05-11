@@ -738,7 +738,69 @@ final class AppState {
                 await self?.handleHoverCapture()
             }
         }
+        hotkey.onAskExcelCell = { [weak self] in
+            Task { [weak self] in
+                await self?.handleAskExcelCell()
+            }
+        }
         hotkey.register()
+    }
+
+    // MARK: - Excel hotkey (⌘⌥E)
+
+    /// Read the currently selected Excel cell, send it to the active mode's AI,
+    /// and write the answer to the cell directly below. Replaces the unreachable
+    /// Office add-in path on Mac Excel 16.83+ where local sideload is broken.
+    func handleAskExcelCell() async {
+        guard !isProcessing else { return }
+        // Quick guard so the hotkey is a no-op when Excel isn't focused.
+        guard ExcelScript.isFrontmost() else {
+            onMarqueeUpdate?("⚠️ Excel not frontmost")
+            return
+        }
+        guard let cellText = ExcelScript.selectedCellText(), !cellText.isEmpty else {
+            onMarqueeUpdate?("⚠️ No cell selected (or empty)")
+            return
+        }
+
+        isProcessing = true
+        onIconColorChange?("blue")
+        onMarqueeUpdate?("🔄 \(activeMode.name)…")
+        defer {
+            isProcessing = false
+            onIconColorChange?("reset")
+        }
+
+        guard let gemini = getOrCreateGemini() else {
+            onMarqueeUpdate?("⚠️ \(errorMessage ?? "Configure AI in Settings")")
+            return
+        }
+
+        let context = await buildKBContext(for: cellText)?.contextString ?? ""
+        do {
+            var buffer = ""
+            for try await chunk in gemini.ask(question: cellText, context: context, history: []) {
+                buffer += chunk
+            }
+            let answer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !answer.isEmpty else {
+                onMarqueeUpdate?("⚠️ Empty response")
+                return
+            }
+            let wrote = ExcelScript.writeBelowSelection(answer)
+            if wrote {
+                onMarqueeUpdate?("✅ Wrote answer")
+            } else {
+                // AppleScript failed — copy to clipboard as a fallback so the user
+                // doesn't lose the answer to a permission denial.
+                clipboard.skipNextChange = true
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(answer, forType: .string)
+                onMarqueeUpdate?("⚠️ Couldn't write to Excel — answer in clipboard")
+            }
+        } catch {
+            onMarqueeUpdate?("⚠️ \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Hover Capture (⌘⌥4)

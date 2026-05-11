@@ -16,7 +16,8 @@ struct GeneralSettingsTab: View {
         hotkeyConfig.sendToAI != initialConfig.sendToAI ||
         hotkeyConfig.inlineChat != initialConfig.inlineChat ||
         hotkeyConfig.cycleMode != initialConfig.cycleMode ||
-        hotkeyConfig.abort != initialConfig.abort
+        hotkeyConfig.abort != initialConfig.abort ||
+        hotkeyConfig.askExcelCell != initialConfig.askExcelCell
     }
 
     var body: some View {
@@ -135,6 +136,7 @@ struct GeneralSettingsTab: View {
                 ShortcutRow(label: "Inline chat", binding: $hotkeyConfig.inlineChat)
                 ShortcutRow(label: "Cycle mode", binding: $hotkeyConfig.cycleMode)
                 ShortcutRow(label: "Cancel", binding: $hotkeyConfig.abort)
+                ShortcutRow(label: "Ask Excel cell (write answer below)", binding: $hotkeyConfig.askExcelCell)
 
                 Button("Apply Changes") {
                     hotkeyConfig.save()

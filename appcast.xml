@@ -7,6 +7,18 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.8</title>
+            <description><![CDATA[<ul>
+                <li>Excel via AppleScript: new hotkey <b>⌘⌥E</b> reads the selected Excel cell, sends it to your active mode's AI, and writes the answer to the cell directly below. Falls back to clipboard if Excel automation is denied. Bypasses the Mac Excel local-sideload restriction entirely — no Office add-in needed.</li>
+                <li>Configurable from Settings → General → Shortcuts.</li>
+                <li>First use will trigger a macOS Automation permission prompt ("dria.app wants permission to control Microsoft Excel"). Grant it once; it persists.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 18:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.8/dria-v1.7.8.dmg" sparkle:version="19" sparkle:shortVersionString="1.7.8" length="2978470" type="application/octet-stream" sparkle:edSignature="1vmx6GxVHAAAPaS3xU/FDq4hgzaK7tZne8ombHb3Q4S46rycq0Fah6lskGr47HeQo1+UzYmAdKMdcCMOTg7OCg==" />
+        </item>
+
+        <item>
             <title>dria v1.7.7</title>
             <description><![CDATA[<ul>
                 <li>Retrieval: switched to Apple NLContextualEmbedding (macOS 14+ transformer) with NLEmbedding fallback. Cache keys now include the backend identifier so model swaps invalidate stale vectors automatically.</li>

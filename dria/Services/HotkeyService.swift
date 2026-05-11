@@ -49,6 +49,7 @@ struct HotkeyConfig: Codable {
     var cycleMode: HotkeyBinding   // Default: ⌘⌥0
     var abort: HotkeyBinding       // Default: ⌘⌥←
     var hoverCapture: HotkeyBinding // Default: ⌘⌥4 — capture around cursor + send
+    var askExcelCell: HotkeyBinding // Default: ⌘⌥E — read Excel selection, write answer below
 
     static let defaults = HotkeyConfig(
         capture: .key1,
@@ -56,8 +57,38 @@ struct HotkeyConfig: Codable {
         inlineChat: .key3,
         cycleMode: .key0,
         abort: .leftArrow,
-        hoverCapture: .key4
+        hoverCapture: .key4,
+        askExcelCell: .keyE
     )
+
+    // Custom decoder so users who saved a config before askExcelCell existed
+    // keep their other bindings instead of being reset to defaults.
+    enum CodingKeys: String, CodingKey {
+        case capture, sendToAI, inlineChat, cycleMode, abort, hoverCapture, askExcelCell
+    }
+
+    init(capture: HotkeyBinding, sendToAI: HotkeyBinding, inlineChat: HotkeyBinding,
+         cycleMode: HotkeyBinding, abort: HotkeyBinding, hoverCapture: HotkeyBinding,
+         askExcelCell: HotkeyBinding) {
+        self.capture = capture
+        self.sendToAI = sendToAI
+        self.inlineChat = inlineChat
+        self.cycleMode = cycleMode
+        self.abort = abort
+        self.hoverCapture = hoverCapture
+        self.askExcelCell = askExcelCell
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.capture       = try c.decodeIfPresent(HotkeyBinding.self, forKey: .capture)       ?? Self.defaults.capture
+        self.sendToAI      = try c.decodeIfPresent(HotkeyBinding.self, forKey: .sendToAI)      ?? Self.defaults.sendToAI
+        self.inlineChat    = try c.decodeIfPresent(HotkeyBinding.self, forKey: .inlineChat)    ?? Self.defaults.inlineChat
+        self.cycleMode     = try c.decodeIfPresent(HotkeyBinding.self, forKey: .cycleMode)     ?? Self.defaults.cycleMode
+        self.abort         = try c.decodeIfPresent(HotkeyBinding.self, forKey: .abort)         ?? Self.defaults.abort
+        self.hoverCapture  = try c.decodeIfPresent(HotkeyBinding.self, forKey: .hoverCapture)  ?? Self.defaults.hoverCapture
+        self.askExcelCell  = try c.decodeIfPresent(HotkeyBinding.self, forKey: .askExcelCell)  ?? Self.defaults.askExcelCell
+    }
 
     static func load() -> HotkeyConfig {
         guard let data = UserDefaults.standard.data(forKey: "hotkeyConfig"),
@@ -92,6 +123,7 @@ private func hotkeyHandler(nextHandler: EventHandlerCallRef?, event: EventRef?, 
         case 4: hotkeyServiceInstance?.onToggleMode?()
         case 5: hotkeyServiceInstance?.onAbort?()
         case 6: hotkeyServiceInstance?.onHoverCapture?()
+        case 7: hotkeyServiceInstance?.onAskExcelCell?()
         default: break
         }
     }
@@ -106,6 +138,7 @@ final class HotkeyService {
     var onToggleMode: (() -> Void)?
     var onAbort: (() -> Void)?
     var onHoverCapture: (() -> Void)?
+    var onAskExcelCell: (() -> Void)?
     private var hotKeyRefs: [EventHotKeyRef?] = []
     private var eventHandlerRef: EventHandlerRef?
 
@@ -138,6 +171,7 @@ final class HotkeyService {
         reg(config.cycleMode.keyCode, 4)       // Cycle mode
         reg(config.abort.keyCode, 5)           // Abort
         reg(config.hoverCapture.keyCode, 6)    // Hover capture + send
+        reg(config.askExcelCell.keyCode, 7)    // Ask Excel cell
     }
 
     func unregister() {
