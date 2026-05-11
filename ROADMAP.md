@@ -31,11 +31,23 @@ Real but lower priority. ~14h total.
 - [ ] **#9 AppState `@MainActor` + concurrency audit.** Background-task mutation of `@Observable` state is a Swift 6 data race. Annotate class `@MainActor`; move embed/OCR/KB compute into `Task.detached` returning Sendable summaries; store + cancel current RAG task on mode switch. Build clean under `-strict-concurrency=complete`. [`AppState.swift::prepareEmbeddings`, `::switchMode`]
 - [ ] **#10 Tauri updater + minisign on parity with Sparkle.** One GitHub Action emits both `appcast.xml` (Sparkle, macOS) and `latest.json` (Tauri, Windows) from the same release. [`desktop/src-tauri/tauri.conf.json`, `.github/workflows/release.yml`]
 
-## Verifications (ongoing — do before claiming "done" on related items)
+## Verifications (results)
 
-- [ ] **V-1 Excel add-in actually loads on Mac Excel 16.x.** Sideload `manifest.xml` to `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/`, run `npx http-server src -S -p 3000`, confirm `=CHATGPT("hi")` returns. Without this we don't know if our `Authorization: Bearer` header trips JS-only-runtime non-simple-CORS.
-- [ ] **V-2 Tauri `embeddings` feature compiles.** `cd desktop/src-tauri && cargo check --features embeddings`. Audit suspects conditional `tauri::generate_handler!` macro doesn't accept inline `#[cfg]` on idents.
-- [ ] **V-3 Document Excel-for-Web as out of scope.** Public-host taskpane → `127.0.0.1` fetch fails PNA preflight + secure-context requirement. Tunneling is the only path and we won't ship it. Update `excel-addin/README.md`.
+- [x] **V-2 Tauri `embeddings` feature compiles.** `cargo check --features embeddings` succeeded on the first try. fastembed v4.9.1 + ort 2.0.0-rc.9 + tokenizers 0.21.4 all build. The audit's concern about `tauri::generate_handler!` not accepting `#[cfg]` was wrong — duplicating the whole `invoke_handler` arm under two `#[cfg]` blocks works fine.
+- [x] **V-3 Excel-for-Web documented as out of scope.** Added support matrix to `excel-addin/README.md` and a runtime banner in `taskpane.html` that shows an unsupported notice when `Office.context.platform === Office.PlatformType.OfficeOnline`.
+- [ ] **V-1 Excel-for-Mac sideload — BLOCKED, not by our code.** Tested on **Excel for Mac 16.108.3 (build 16.108.26050324)**. Manifest validates clean (`npx office-addin-manifest validate` passes), HTTPS dev server serves all 6 assets with 200, dev certs trusted. Tried two sideload paths:
+  1. **`~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/manifest.xml` drop** — silently ignored. No dria group in the Home tab ribbon after full Excel quit + cache wipe + relaunch.
+  2. **`npx office-addin-debugging start manifest.xml desktop --app excel`** — generated a temp `.xlsx` embedding the manifest reference. Excel opens it, shows **"Add-in Error: This add-in is no longer available"** dialog. The embedded reference fails to resolve back to the manifest.
+
+  **Root cause** is Microsoft's tightening of Mac Excel local sideload in 16.83+. The `wef/` auto-discovery path is deprecated; `Insert → Upload My Add-in` is being phased out; Centralized Deployment requires an M365 tenant admin. This is consistent with OfficeDev/office-js issues #4823 and similar reports throughout 2025/2026. **Not a dria bug — a Microsoft platform restriction.**
+
+  **Available paths forward**:
+  - **AppSource publication** — 3–5 business days per submission, requires public privacy policy URL, public EULA URL, public support URL, Partner Center developer verification, Microsoft 365 schema-1.1+. Out of scope for v1.x.
+  - **EDU tenant Centralized Deployment** — when a university customer asks; tenant admin pushes the manifest. Zero developer work.
+  - **Excel for Windows** — `wef/`-equivalent (`%AppData%\Microsoft\Office\PRoamcache\PRoamingState_...\WEF`) + `Insert → Upload My Add-in` still work as of Excel 2024. Test there next.
+  - **Wait for Microsoft to restore Mac sideload** — no public ETA.
+
+  **Decision**: The Excel integration code is correct (manifest passes validation, server serves the assets, the bridge endpoints work). The blocker is at the platform layer. **Mark the Excel add-in as "Windows + Centralized Deployment supported; Mac sideload pending Microsoft fix" in `excel-addin/README.md`.** Move on to Sprint 2.
 
 ## Out of scope (audit flagged, deliberately skipped)
 

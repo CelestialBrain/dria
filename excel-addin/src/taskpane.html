@@ -42,6 +42,16 @@
 
     <script>
       Office.onReady(() => {
+        // Excel for Web cannot reach 127.0.0.1 — show a banner and bail.
+        if (Office.context && Office.context.platform === Office.PlatformType.OfficeOnline) {
+          document.body.innerHTML =
+            "<h2>dria for Excel</h2>" +
+            "<p style=\"padding:12px;background:#fde8e8;color:#b42318;border-radius:4px;\">" +
+            "Not supported in Excel for the Web. The dria bridge runs on your local machine, " +
+            "which Excel for the Web can't reach. Use Excel for Mac or Windows desktop instead." +
+            "</p>";
+          return;
+        }
         const tokenInput = document.getElementById("token");
         const urlInput = document.getElementById("url");
         const status = document.getElementById("status");

@@ -1,0 +1,15 @@
+{
+  "name": "dria-excel-addin",
+  "version": "1.0.0",
+  "description": "dria custom functions for Excel — calls localhost bridge",
+  "private": true,
+  "scripts": {
+    "serve": "http-server src -S -C $HOME/.office-addin-dev-certs/localhost.crt -K $HOME/.office-addin-dev-certs/localhost.key -p 3443 --cors",
+    "sideload": "office-addin-debugging start manifest.xml desktop --app excel --no-debug",
+    "stop": "office-addin-debugging stop manifest.xml --app excel"
+  },
+  "config": {
+    "app_to_debug": "excel",
+    "app_type_to_debug": "desktop"
+  }
+}
