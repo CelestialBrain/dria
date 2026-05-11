@@ -177,14 +177,38 @@ dria/
 └── LICENSE
 ```
 
-## Bug Reports
+## Logs & diagnostics
 
-1. Settings → General → **Recent Issues** → view any crash or hang logs
-2. Settings → General → **Export Debug Logs** → bundled report
-3. Settings → General → **Report Bug** → opens GitHub Issues
-4. Attach the debug log and any relevant `~/Library/Logs/dria/` files
+dria writes its own logs to `~/Library/Logs/dria/`. Files are timestamped and never rotated automatically — delete from Settings → General → **Recent Issues → Clear all** when full.
 
-**Reproduced a hang?** Capture a live stack while it's stuck:
+| File pattern | Source | Contents |
+|---|---|---|
+| `crash-<ts>.log` | `CrashReporter` | Uncaught `NSException` (handler) or fatal POSIX signal (SIGSEGV/ABRT/BUS/ILL/FPE/TRAP). Includes app version, OS, name+reason, Swift stack symbols. macOS chains to its own `.ips` after we write. |
+| `hang-<ts>.log` | `HangWatchdog` | Main-thread unresponsive ≥5 s. Warns; abort-crashes at ≥60 s with no active long-operation. Includes hang duration, active named long-operations (e.g. `prepareEmbeddings (500 chunks)`), watchdog-thread backtrace. |
+| `hang-sample-<ts>.log` | `/usr/bin/sample` subprocess | Full symbolicated backtrace of the hung main thread, paired with each `hang-` log. Same data as running `sample <pid>` manually. |
+| `excel-<ts>.log` | `handleAskExcelCell` (v1.7.12+) | One entry per ⌘⌥E invocation: prompt (truncated), raw AI response, post-preamble-stripper output. Diagnose "nothing happened in Excel" without guessing. |
+
+Plus macOS's own `~/Library/Logs/DiagnosticReports/dria-*.ips` files when the app aborts.
+
+### How to access
+
+- **In-app** — Settings → General → **Recent Issues** lists crash + hang logs with View / Reveal-in-Finder / Clear-all. Excel traces aren't in this UI (they're not "issues" — they're operational traces).
+- **Finder** — `⌘⇧G` → paste `~/Library/Logs/dria/`.
+- **Terminal** —
+  ```bash
+  ls -lat ~/Library/Logs/dria/                # newest first
+  tail -100 ~/Library/Logs/dria/excel-*.log    # latest Excel round-trips
+  cat ~/Library/Logs/dria/crash-*.log          # all crash reports
+  ```
+
+### Bug reports
+
+1. Settings → General → **Recent Issues** → view any crash or hang logs.
+2. Settings → General → **Export Debug Logs** → bundled report.
+3. Settings → General → **Report Bug** → opens GitHub Issues.
+4. Attach the debug log and any relevant `~/Library/Logs/dria/` files.
+
+**Live hang capture** — if the app is currently stuck at high CPU, grab a real stack before killing it:
 ```bash
 sample $(pgrep dria) 3 -mayDie > ~/dria-hang.txt
 ```
