@@ -746,6 +746,32 @@ final class AppState {
         hotkey.register()
     }
 
+    /// Defensive cleanup for Excel answers: models routinely emit
+    /// "Cell H16 contains the value X. --- explanation…" despite the prompt
+    /// asking for the value only. We salvage the first informational token
+    /// (the value or formula) and drop the rest.
+    private func stripExcelPreamble(_ text: String) -> String {
+        var t = text
+        // If the model used "---" as a separator, keep only what's before it
+        // (our prompt says "answer only", so the value lives above the rule).
+        if let r = t.range(of: "\n---") { t = String(t[..<r.lowerBound]) }
+        // Drop a leading "Cell X contains the value Y." preamble.
+        let prefixPatterns: [String] = [
+            #"^Cell\s+[A-Z]{1,3}\d+\s+contains?\s+(the\s+)?(value|number|formula|text|content)?\s*:?\s*"#,
+            #"^The\s+(value|content|formula)\s+(of|in|at)\s+(cell\s+)?[A-Z]{1,3}\d+\s+is\s*:?\s*"#,
+            #"^Answer\s*:\s*"#,
+        ]
+        for pattern in prefixPatterns {
+            if let rx = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let range = NSRange(t.startIndex..<t.endIndex, in: t)
+                t = rx.stringByReplacingMatches(in: t, options: [], range: range, withTemplate: "")
+            }
+        }
+        // If multi-line, keep only the first non-empty line (per "single short line" rule).
+        let firstLine = t.components(separatedBy: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return (firstLine ?? t).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Excel hotkey (⌘⌥E)
 
     /// Read the currently selected Excel cell, send it to the active mode's AI
@@ -808,9 +834,17 @@ final class AppState {
         let prompt: String
         if let book {
             prompt = """
-            You're answering a question that's typed inside an Excel cell at \(book.selectionAddress) on sheet "\(book.sheetName)". The full sheet is provided as TAB-separated values above. Use it as context — reference other cells, totals, headers, ranges. Reply with the answer only, no preamble. If the user is asking for a value or formula, return just that value or formula.
+            You are answering a question typed inside Excel cell \(book.selectionAddress) on sheet "\(book.sheetName)".
 
-            Question (cell \(book.selectionAddress)): \(cellText)
+            The sheet is provided above as TSV with **A1-style row and column headers**: the first row is column letters (A, B, C, …), the first column is row numbers. To find the value of any cell (e.g., H16), read the intersection of row 16 and column H from that TSV.
+
+            Critical rules:
+            - Answer ONLY with the value or short result. No preamble, no explanation, no "Cell X contains…" phrasing, no markdown.
+            - If asked about a specific cell, look it up in the TSV. If the cell is empty (blank between two tabs), reply with `0` for numeric contexts or `(empty)` for textual contexts. Do NOT invent a value.
+            - If the question asks for a formula, return the formula starting with `=`.
+            - Keep the answer to a single short line when possible. Multi-line only if the question genuinely requires it.
+
+            Question (in cell \(book.selectionAddress)): \(cellText)
             """
         } else {
             prompt = cellText
@@ -821,7 +855,9 @@ final class AppState {
             for try await chunk in gemini.ask(question: prompt, context: ctx, history: []) {
                 buffer += chunk
             }
-            let answer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            var answer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strip common preamble patterns the model leaks despite our prompt.
+            answer = stripExcelPreamble(answer)
             guard !answer.isEmpty else {
                 onMarqueeUpdate?("⚠️ Empty response")
                 return

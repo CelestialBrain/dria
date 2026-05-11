@@ -7,6 +7,18 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.10</title>
+            <description><![CDATA[<ul>
+                <li>Fix: ⌘⌥E TSV context now includes <b>A1-style row and column headers</b> so the AI can resolve cell references precisely (was: hallucinating values for specific cells because the grid was unlabeled).</li>
+                <li>Fix: prompt rewritten with explicit "look up by header" and "do not invent values" rules + structured handling for empty cells.</li>
+                <li>Fix: defensive preamble stripper drops "Cell X contains the value Y. ---" wrappers before writing to the cell.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 20:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.10/dria-v1.7.10.dmg" sparkle:version="21" sparkle:shortVersionString="1.7.10" length="2986495" type="application/octet-stream" sparkle:edSignature="JKcnpWdZ2W6JNP3GALbUndiBc7PjPILt3zIOmsIN6cTvGBYMbAXC9MKvzBJ/u7YSd95yidW5ZKmMx9LuRKO6Aw==" />
+        </item>
+
+        <item>
             <title>dria v1.7.9</title>
             <description><![CDATA[<ul>
                 <li>⌘⌥E (Excel cell ask) now passes the <b>entire used range</b> of the active sheet to the AI as TSV context — like a one-shot Excel MCP. The AI can reference other cells, totals, headers, etc., not just the selected cell.</li>

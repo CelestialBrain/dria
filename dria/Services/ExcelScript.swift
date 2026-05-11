@@ -22,6 +22,8 @@ struct ExcelWorkbookContext {
     let usedCols: Int                // total used cols
     let includedRows: Int            // rows actually fetched
     let includedCols: Int            // cols actually fetched
+    let firstRow: Int                // 1-based row index of top-left fetched cell
+    let firstCol: Int                // 1-based col index of top-left fetched cell
     let tsv: String                  // TAB-separated values, top-left of used range
 }
 
@@ -188,7 +190,8 @@ enum ExcelScript {
 
                 return bookName & "\\n" & sheetName & "\\n" & selAddr & "\\n" & selVal & "\\n" ¬
                     & (rTotal as text) & "\\n" & (cTotal as text) & "\\n" ¬
-                    & (rInc as text) & "\\n" & (cInc as text) & "\\n---TSV---\\n" & tsvBody
+                    & (rInc as text) & "\\n" & (cInc as text) & "\\n" ¬
+                    & (firstRowIx as text) & "\\n" & (firstColIx as text) & "\\n---TSV---\\n" & tsvBody
             on error errMsg
                 return "err:" & errMsg
             end try
@@ -198,7 +201,21 @@ enum ExcelScript {
         let parts = raw.components(separatedBy: "\n---TSV---\n")
         guard parts.count == 2 else { return nil }
         let header = parts[0].components(separatedBy: "\n")
-        guard header.count >= 8 else { return nil }
+        guard header.count >= 10 else { return nil }
+        let firstRow = Int(header[8]) ?? 1
+        let firstCol = Int(header[9]) ?? 1
+        let includedRows = Int(header[6]) ?? 0
+        let includedCols = Int(header[7]) ?? 0
+        // Re-tag the TSV with A1-style row + column headers so the AI can
+        // resolve any cell reference (e.g. "H16") without guessing. Without
+        // these headers the model hallucinates values based on grid position.
+        let labeledTSV = Self.relabelTSV(
+            parts[1],
+            firstRow: firstRow,
+            firstCol: firstCol,
+            rows: includedRows,
+            cols: includedCols
+        )
         return ExcelWorkbookContext(
             bookName: header[0],
             sheetName: header[1],
@@ -206,10 +223,47 @@ enum ExcelScript {
             selectionValue: header[3],
             usedRows: Int(header[4]) ?? 0,
             usedCols: Int(header[5]) ?? 0,
-            includedRows: Int(header[6]) ?? 0,
-            includedCols: Int(header[7]) ?? 0,
-            tsv: parts[1]
+            includedRows: includedRows,
+            includedCols: includedCols,
+            firstRow: firstRow,
+            firstCol: firstCol,
+            tsv: labeledTSV
         )
+    }
+
+    /// Convert an Excel column index (1-based) to its A1 letter (A, B, ..., Z, AA, AB, ...).
+    static func columnLetter(_ index: Int) -> String {
+        var n = index
+        var s = ""
+        while n > 0 {
+            let r = (n - 1) % 26
+            s = String(UnicodeScalar(65 + r)!) + s
+            n = (n - 1 - r) / 26
+        }
+        return s
+    }
+
+    /// Prepend a header row with column letters and a leading cell-address
+    /// column to every data row. This is the single biggest accuracy fix:
+    /// without it the AI cannot reliably answer questions about specific cells.
+    private static func relabelTSV(_ tsv: String, firstRow: Int, firstCol: Int, rows: Int, cols: Int) -> String {
+        let dataLines = tsv.components(separatedBy: "\n")
+        var out: [String] = []
+        out.reserveCapacity(dataLines.count + 1)
+
+        // Header: leading blank cell, then column letters across.
+        var header = ""
+        for c in 0..<cols {
+            header += "\t" + columnLetter(firstCol + c)
+        }
+        out.append(header)
+
+        // Body: each line prefixed by its real row number.
+        for (i, line) in dataLines.enumerated() {
+            guard i < rows else { break }
+            out.append("\(firstRow + i)\t\(line)")
+        }
+        return out.joined(separator: "\n")
     }
 
     // MARK: - Run
