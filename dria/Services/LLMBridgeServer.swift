@@ -46,11 +46,19 @@ final class LLMBridgeServer {
 
     func start() {
         guard listener == nil else { return }
-        token = loadOrGenerateToken()
+        token = BridgeTokenStore.loadOrCreate()
 
+        // Defense in depth — three layers force loopback-only binding:
+        //  1. acceptLocalOnly: NWParameters constraint to the local host
+        //  2. requiredInterfaceType = .loopback: bind only to lo0, never to a
+        //     physical interface, VPN utun*, or Docker bridge
+        //  3. accept-handler check: reject any remote endpoint that isn't
+        //     127.0.0.1 / ::1 / fe80::1
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         params.acceptLocalOnly = true
+        params.requiredInterfaceType = .loopback
+        params.includePeerToPeer = false
 
         do {
             let l = try NWListener(using: params, on: port)
@@ -66,9 +74,30 @@ final class LLMBridgeServer {
             }
             l.start(queue: .main)
             listener = l
-            NSLog("[dria-bridge] listening on 127.0.0.1:\(port.rawValue)")
+            NSLog("[dria-bridge] listening on 127.0.0.1:\(port.rawValue) (loopback only)")
         } catch {
             NSLog("[dria-bridge] start failed: \(error)")
+        }
+    }
+
+    /// Whitelist of remote addresses we'll service. Rejects everything else
+    /// even if the OS happened to accept the connection.
+    private func isLoopback(_ endpoint: NWEndpoint) -> Bool {
+        switch endpoint {
+        case .hostPort(let host, _):
+            switch host {
+            case .ipv4(let ip):
+                return ip == .loopback || ip.rawValue.first == 127
+            case .ipv6(let ip):
+                return ip == .loopback // ::1
+            case .name(let n, _):
+                let lower = n.lowercased()
+                return lower == "localhost" || lower == "localhost." || lower == "ip6-localhost"
+            @unknown default:
+                return false
+            }
+        default:
+            return false
         }
     }
 
@@ -82,41 +111,29 @@ final class LLMBridgeServer {
 
     // MARK: - Token
 
-    private func tokenURL() -> URL {
-        let dir = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/dria", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("bridge-token")
-    }
-
     func currentToken() -> String {
         if !token.isEmpty { return token }
-        return loadOrGenerateToken()
+        return BridgeTokenStore.loadOrCreate()
     }
 
-    private func loadOrGenerateToken() -> String {
-        let url = tokenURL()
-        if let data = try? Data(contentsOf: url),
-           let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !s.isEmpty {
-            return s
-        }
-        let fresh = randomToken()
-        try? fresh.data(using: .utf8)?.write(to: url, options: .atomic)
-        // Tighten perms (0600)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        return fresh
-    }
-
-    private func randomToken() -> String {
-        var bytes = [UInt8](repeating: 0, count: 24)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return bytes.map { String(format: "%02x", $0) }.joined()
+    /// Generate a new token, invalidating any client that cached the old one.
+    /// UI should re-display the token after this completes.
+    func rotateToken() {
+        token = BridgeTokenStore.rotate()
     }
 
     // MARK: - Connection handling
 
     private func handleConnection(_ conn: NWConnection) {
+        // Belt-and-braces remote-endpoint check. Should be unreachable given
+        // `acceptLocalOnly = true` + `requiredInterfaceType = .loopback`, but
+        // an OS bug or future API change shouldn't expose the bridge LAN-wide.
+        if !isLoopback(conn.endpoint) {
+            NSLog("[dria-bridge] rejecting non-loopback connection from \(conn.endpoint)")
+            conn.cancel()
+            return
+        }
+
         let key = ObjectIdentifier(conn)
         connectionStore[key] = conn
         connections.insert(key)
@@ -158,7 +175,7 @@ final class LLMBridgeServer {
     private func route(_ req: HTTPRequest, on conn: NWConnection) async {
         // CORS preflight for Office origins
         if req.method == "OPTIONS" {
-            sendCORS(on: conn)
+            sendCORS(on: conn, request: req)
             return
         }
 
@@ -167,18 +184,18 @@ final class LLMBridgeServer {
             let auth = req.headers["authorization"] ?? ""
             let expected = "Bearer \(token)"
             guard auth == expected else {
-                send(status: 401, json: ["error": "unauthorized"], on: conn)
+                send(status: 401, json: ["error": "unauthorized"], on: conn, request: req)
                 return
             }
         }
 
         switch (req.method, req.path) {
         case ("GET", "/v1/ping"):
-            send(status: 200, json: ["ok": true, "version": "1"], on: conn)
+            send(status: 200, json: ["ok": true, "version": "1"], on: conn, request: req)
 
         case ("GET", "/v1/modes"):
             let modes = onListModes?() ?? []
-            send(status: 200, json: ["modes": modes], on: conn)
+            send(status: 200, json: ["modes": modes], on: conn, request: req)
 
         case ("POST", "/v1/ask"):
             await handleAsk(req: req, on: conn)
@@ -190,7 +207,7 @@ final class LLMBridgeServer {
             await handleExtract(req: req, on: conn)
 
         default:
-            send(status: 404, json: ["error": "not found"], on: conn)
+            send(status: 404, json: ["error": "not found"], on: conn, request: req)
         }
     }
 
@@ -199,21 +216,21 @@ final class LLMBridgeServer {
     private func handleAsk(req: HTTPRequest, on conn: NWConnection) async {
         guard let body = try? JSONSerialization.jsonObject(with: req.body) as? [String: Any],
               let prompt = body["prompt"] as? String, !prompt.isEmpty else {
-            send(status: 400, json: ["error": "missing 'prompt'"], on: conn)
+            send(status: 400, json: ["error": "missing 'prompt'"], on: conn, request: req)
             return
         }
         let modeName = body["mode"] as? String
         let useKB = (body["useKnowledgeBase"] as? Bool) ?? true
 
         guard let handler = onAsk else {
-            send(status: 503, json: ["error": "bridge not wired"], on: conn)
+            send(status: 503, json: ["error": "bridge not wired"], on: conn, request: req)
             return
         }
         switch await handler(prompt, modeName, useKB) {
         case .success(let answer):
-            send(status: 200, json: ["answer": answer], on: conn)
+            send(status: 200, json: ["answer": answer], on: conn, request: req)
         case .failure(let err):
-            send(status: 500, json: ["error": err.localizedDescription], on: conn)
+            send(status: 500, json: ["error": err.localizedDescription], on: conn, request: req)
         }
     }
 
@@ -221,7 +238,7 @@ final class LLMBridgeServer {
         guard let body = try? JSONSerialization.jsonObject(with: req.body) as? [String: Any],
               let text = body["text"] as? String,
               let categories = body["categories"] as? [String], !categories.isEmpty else {
-            send(status: 400, json: ["error": "missing 'text' or 'categories'"], on: conn)
+            send(status: 400, json: ["error": "missing 'text' or 'categories'"], on: conn, request: req)
             return
         }
         let prompt = """
@@ -231,15 +248,15 @@ final class LLMBridgeServer {
         Text: \(text)
         """
         guard let handler = onAsk else {
-            send(status: 503, json: ["error": "bridge not wired"], on: conn)
+            send(status: 503, json: ["error": "bridge not wired"], on: conn, request: req)
             return
         }
         switch await handler(prompt, nil, false) {
         case .success(let answer):
             let label = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-            send(status: 200, json: ["label": label], on: conn)
+            send(status: 200, json: ["label": label], on: conn, request: req)
         case .failure(let err):
-            send(status: 500, json: ["error": err.localizedDescription], on: conn)
+            send(status: 500, json: ["error": err.localizedDescription], on: conn, request: req)
         }
     }
 
@@ -247,7 +264,7 @@ final class LLMBridgeServer {
         guard let body = try? JSONSerialization.jsonObject(with: req.body) as? [String: Any],
               let text = body["text"] as? String,
               let instruction = body["instruction"] as? String else {
-            send(status: 400, json: ["error": "missing 'text' or 'instruction'"], on: conn)
+            send(status: 400, json: ["error": "missing 'text' or 'instruction'"], on: conn, request: req)
             return
         }
         let prompt = """
@@ -257,44 +274,78 @@ final class LLMBridgeServer {
         Text: \(text)
         """
         guard let handler = onAsk else {
-            send(status: 503, json: ["error": "bridge not wired"], on: conn)
+            send(status: 503, json: ["error": "bridge not wired"], on: conn, request: req)
             return
         }
         switch await handler(prompt, nil, false) {
         case .success(let answer):
-            send(status: 200, json: ["value": answer.trimmingCharacters(in: .whitespacesAndNewlines)], on: conn)
+            send(status: 200, json: ["value": answer.trimmingCharacters(in: .whitespacesAndNewlines)], on: conn, request: req)
         case .failure(let err):
-            send(status: 500, json: ["error": err.localizedDescription], on: conn)
+            send(status: 500, json: ["error": err.localizedDescription], on: conn, request: req)
         }
     }
 
     // MARK: - Response helpers
 
-    private func corsHeaders() -> String {
-        // Allow Excel for Web origins + any localhost-loaded add-in. Office desktop has no Origin header.
-        """
-        Access-Control-Allow-Origin: *\r
+    /// Origins we'll service. Office desktop add-ins send no Origin header —
+    /// requests with absent Origin are allowed (handled below). Browser-style
+    /// requests are echoed back only when matching, never wildcarded.
+    private static let originAllowlist: [NSRegularExpression] = {
+        let patterns = [
+            #"^https://localhost(?::\d+)?$"#,            // local dev (npx http-server -S)
+            #"^https://127\.0\.0\.1(?::\d+)?$"#,
+            #"^https://[A-Za-z0-9-]+\.officeapps\.live\.com$"#, // Excel for Web runtime
+            #"^https://[A-Za-z0-9-]+\.office\.com$"#,            // Excel taskpane host
+            #"^https://outlook\.office\.com$"#,
+            #"^https://outlook\.office365\.com$"#,
+            #"^https://[A-Za-z0-9-]+\.officeusercontent\.com$"#, // sandboxed add-in content
+        ]
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
+    }()
+
+    private func allowedOrigin(_ origin: String?) -> String? {
+        guard let origin, !origin.isEmpty else {
+            // Absent Origin means Office desktop add-in or same-origin curl — no CORS needed.
+            return nil
+        }
+        let range = NSRange(origin.startIndex..<origin.endIndex, in: origin)
+        for rx in Self.originAllowlist where rx.firstMatch(in: origin, options: [], range: range) != nil {
+            return origin
+        }
+        return nil
+    }
+
+    private func corsHeaders(for request: HTTPRequest?) -> String {
+        let origin = request?.headers["origin"]
+        guard let echo = allowedOrigin(origin) else {
+            // No CORS headers — browser will refuse the response.
+            // Always set Vary so any caching proxy doesn't poison this.
+            return "Vary: Origin\r\n"
+        }
+        return """
+        Access-Control-Allow-Origin: \(echo)\r
         Access-Control-Allow-Methods: GET, POST, OPTIONS\r
         Access-Control-Allow-Headers: Authorization, Content-Type\r
         Access-Control-Max-Age: 86400\r
+        Vary: Origin\r
+
         """
     }
 
-    private func sendCORS(on conn: NWConnection) {
-        let resp = "HTTP/1.1 204 No Content\r\n\(corsHeaders())\r\nContent-Length: 0\r\n\r\n"
+    private func sendCORS(on conn: NWConnection, request: HTTPRequest? = nil) {
+        let resp = "HTTP/1.1 204 No Content\r\n\(corsHeaders(for: request))Content-Length: 0\r\n\r\n"
         conn.send(content: resp.data(using: .utf8), completion: .contentProcessed { [weak self] _ in
             self?.closeConnection(conn)
         })
     }
 
-    private func send(status: Int, json: [String: Any], on conn: NWConnection) {
+    private func send(status: Int, json: [String: Any], on conn: NWConnection, request: HTTPRequest? = nil) {
         let body = (try? JSONSerialization.data(withJSONObject: json)) ?? Data("{}".utf8)
         let head = """
         HTTP/1.1 \(status) \(statusText(status))\r
         Content-Type: application/json; charset=utf-8\r
         Content-Length: \(body.count)\r
-        \(corsHeaders())\r
-        Connection: close\r
+        \(corsHeaders(for: request))Connection: close\r
         \r
 
         """

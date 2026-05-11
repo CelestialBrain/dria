@@ -236,8 +236,12 @@ struct GeneralSettingsTab: View {
                             NSPasteboard.general.setString(appState.bridgeServer.currentToken(), forType: .string)
                         }
                         .controlSize(.small)
+                        Button("Rotate") {
+                            appState.bridgeServer.rotateToken()
+                        }
+                        .controlSize(.small)
                     }
-                    Text("Paste this into your Excel add-in settings. Stored at ~/Library/Application Support/dria/bridge-token.")
+                    Text("Stored in your login Keychain (com.dev.dria.bridge-token). Rotating invalidates any client that cached the old token.")
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
             }
