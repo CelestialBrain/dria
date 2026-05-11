@@ -7,6 +7,21 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.5</title>
+            <description><![CDATA[<ul>
+                <li>Refactor: AppState split into focused helpers (ChatPersistence, AIProviderFactory, ChatPDFExporter); SettingsView split into one file per tab.</li>
+                <li>Semantic RAG: on-device NLEmbedding-based knowledge retrieval. Works with every AI provider, fully offline, no API key needed. Falls back to keyword TF-IDF when unavailable.</li>
+                <li>Excel integration: local bridge server on 127.0.0.1:7842 (bearer-token auth) exposes =CHATGPT, =DRIA_CLASSIFY, =DRIA_EXTRACT plus an "Ask dria" ribbon button. See excel-addin/README.md.</li>
+                <li>Crash & hang logging: NSException + signal handlers write to ~/Library/Logs/dria/. Main-thread watchdog logs warnings at 3 s, force-crashes at 20 s for a real diagnostic report.</li>
+                <li>Layout spin fix: ResponseView caps display at 4000 chars with "Show all" expander; ChatArea uses VStack (not LazyVStack) for the 20-message window; OCR output is cleaned (orphan glyphs dropped, blank-line runs collapsed, 8 KB cap).</li>
+                <li>Recent Issues UI in Settings → General lists + opens crash / hang logs.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 14:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.5/dria-v1.7.5.dmg" sparkle:version="16" sparkle:shortVersionString="1.7.5" length="2941236" type="application/octet-stream" sparkle:edSignature="QBoGMF43r03wDZsqBTgmPL0kS7axkw/StCvcRMz9MCzUylsAv+7D9uFURUhVG2f/LSZwbyHWwpvEM9KdxjBLDA==" />
+        </item>
+
+        <item>
             <title>dria v1.7.4</title>
             <description><![CDATA[<ul><li>Permanent fix for 100% CPU — ChatArea uses @State snapshots + NotificationCenter</li></ul>]]></description>
             <pubDate>Thu, 27 Mar 2026 04:00:00 +0000</pubDate>
