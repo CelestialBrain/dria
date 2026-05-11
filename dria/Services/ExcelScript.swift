@@ -109,6 +109,17 @@ enum ExcelScript {
     /// to keep the prompt under control.
     static func workbookContext(maxRows: Int = 100, maxCols: Int = 26) -> ExcelWorkbookContext? {
         let script = """
+        on colLetter(n)
+            set t to ""
+            set k to n
+            repeat while k > 0
+                set m to ((k - 1) mod 26)
+                set t to (character (m + 1) of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") & t
+                set k to ((k - 1 - m) div 26)
+            end repeat
+            return t
+        end colLetter
+
         tell application "Microsoft Excel"
             try
                 if not (exists active workbook) then return ""
@@ -116,7 +127,7 @@ enum ExcelScript {
                 set bookName to name of active workbook
                 set sheetName to name of ws
                 set sel to selection
-                set selAddr to get address sel local form false external form false
+                set selAddr to get address of sel
                 set rawVal to value of sel
                 set selVal to ""
                 if rawVal is not missing value then set selVal to rawVal as text
@@ -137,9 +148,12 @@ enum ExcelScript {
                 set lastRowIx to firstRowIx + rInc - 1
                 set lastColIx to firstColIx + cInc - 1
 
-                set topLeft to cell firstRowIx column firstColIx of ws
-                set bottomRight to cell lastRowIx column lastColIx of ws
-                set targetRng to range (get address topLeft) & ":" & (get address bottomRight) of ws
+                -- Address-based range syntax. The `cell N column M` form parses
+                -- inconsistently on Excel for Mac for reads — silent failures
+                -- shipped in v1.7.9 / v1.7.10. A1 strings are unambiguous.
+                set tlAddr to my colLetter(firstColIx) & (firstRowIx as text)
+                set brAddr to my colLetter(lastColIx) & (lastRowIx as text)
+                set targetRng to range (tlAddr & ":" & brAddr) of ws
                 set vals to value of targetRng
 
                 -- Build TSV with a header line of metadata.
@@ -184,14 +198,18 @@ enum ExcelScript {
                     end repeat
                 end if
 
-                set AppleScript's text item delimiters to linefeed
+                set AppleScript's text item delimiters to (ASCII character 10)
                 set tsvBody to tsvLines as text
                 set AppleScript's text item delimiters to ""
 
-                return bookName & "\\n" & sheetName & "\\n" & selAddr & "\\n" & selVal & "\\n" ¬
-                    & (rTotal as text) & "\\n" & (cTotal as text) & "\\n" ¬
-                    & (rInc as text) & "\\n" & (cInc as text) & "\\n" ¬
-                    & (firstRowIx as text) & "\\n" & (firstColIx as text) & "\\n---TSV---\\n" & tsvBody
+                -- AppleScript has no C-style \\n escape. Real LF must come from
+                -- ASCII 10, not the literal two characters. Swift then splits on
+                -- "\\n---TSV---\\n" which is the actual two-byte LF sequence.
+                set lf to (ASCII character 10)
+                return bookName & lf & sheetName & lf & selAddr & lf & selVal & lf ¬
+                    & (rTotal as text) & lf & (cTotal as text) & lf ¬
+                    & (rInc as text) & lf & (cInc as text) & lf ¬
+                    & (firstRowIx as text) & lf & (firstColIx as text) & lf & "---TSV---" & lf & tsvBody
             on error errMsg
                 return "err:" & errMsg
             end try

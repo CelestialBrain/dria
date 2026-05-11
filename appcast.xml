@@ -7,6 +7,19 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.11</title>
+            <description><![CDATA[<ul>
+                <li><b>Honest fix: whole-sheet context was silently broken in v1.7.9 and v1.7.10.</b> Three AppleScript syntax bugs caused workbookContext to error out and fall back to single-cell mode, which is why the AI hallucinated cell values: it had zero sheet context. Verified end-to-end against live Excel via NSAppleScript.</li>
+                <li>Fixed: `cell N column M of ws` form fails to parse on Excel for Mac for reads — now uses address-based range syntax (built via an AppleScript colLetter handler).</li>
+                <li>Fixed: `get address sel local form false external form false` doesn't parse — simplified to `get address of sel`.</li>
+                <li>Fixed: literal "\\n" used as a separator in AppleScript (which doesn't honor C-style escapes); now uses `(ASCII character 10)` so the Swift parser actually finds the LFs it expects.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 21:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.11/dria-v1.7.11.dmg" sparkle:version="22" sparkle:shortVersionString="1.7.11" length="2986704" type="application/octet-stream" sparkle:edSignature="5QQfUkzJBoq/GaiAIpDIeFz4Pc/LyHCxHcjSona0L5Muc04urmsnLpLsZHyM/9fi/E3nodAEEck6dTtaTBP4Aw==" />
+        </item>
+
+        <item>
             <title>dria v1.7.10</title>
             <description><![CDATA[<ul>
                 <li>Fix: ⌘⌥E TSV context now includes <b>A1-style row and column headers</b> so the AI can resolve cell references precisely (was: hallucinating values for specific cells because the grid was unlabeled).</li>
