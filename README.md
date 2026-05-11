@@ -6,7 +6,7 @@ A stealth AI study assistant for **macOS** and **Windows**. Capture your screen,
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| **macOS** | [dria-v1.7.1.dmg](https://github.com/CelestialBrain/dria/releases/latest) | Drag to Applications. First launch: right-click → Open |
+| **macOS** | [dria-v1.7.5.dmg](https://github.com/CelestialBrain/dria/releases/latest) | Drag to Applications. First launch: right-click → Open |
 | **Windows** | [dria-v1.0.0-setup.exe](https://github.com/CelestialBrain/dria/releases/tag/desktop-v1.0.0) | Run the installer. No build tools needed |
 | **Windows (.msi)** | [dria-v1.0.0.msi](https://github.com/CelestialBrain/dria/releases/tag/desktop-v1.0.0) | Alternative MSI installer |
 
@@ -27,6 +27,7 @@ A stealth AI study assistant for **macOS** and **Windows**. Capture your screen,
 
 - **8 AI providers** — Google AI (free), Vertex AI, Claude, OpenAI, Groq, Mistral, Ollama (local), OpenRouter/xAI
 - **Study modes** — per-subject modes with custom knowledge bases and separate chat history
+- **Semantic RAG** — on-device sentence embeddings (Apple `NLEmbedding`) with cosine similarity ranking; falls back to keyword TF-IDF when unavailable. No API key or network required.
 - **RAG knowledge base** — import PDF, DOCX, PPTX, XLSX, HTML, RTF, Markdown, images
 - **Voice input** — real-time transcription with waveform display (10 languages)
 - **Desktop audio capture** — transcribe lectures/videos (Mic / Desktop / Both)
@@ -45,6 +46,8 @@ A stealth AI study assistant for **macOS** and **Windows**. Capture your screen,
 - **Launch at login** — toggle in Settings
 - **Auto-update** — one-click updates (macOS: Sparkle, Windows: Tauri updater)
 - **Local-only analytics** — opt-in usage stats, nothing leaves your device
+- **Crash & hang logging** — uncaught exceptions, fatal signals, and main-thread hangs are written to `~/Library/Logs/dria/`. Hangs longer than 20 s force-crash to generate a real diagnostic report (Slack/Discord-style watchdog).
+- **Excel add-in** — `=CHATGPT("prompt")`, `=DRIA_CLASSIFY(...)`, `=DRIA_EXTRACT(...)` and an **Ask dria** ribbon button, served by a local HTTPS bridge (127.0.0.1:7842, bearer-token auth). See [`excel-addin/README.md`](excel-addin/README.md).
 - **Debug log export + bug report** — one-click troubleshooting
 
 ## Hotkeys
@@ -64,7 +67,7 @@ All hotkeys configurable in Settings.
 ### macOS
 
 **Install from DMG:**
-1. Download [dria-v1.7.1.dmg](https://github.com/CelestialBrain/dria/releases/latest)
+1. Download [dria-v1.7.5.dmg](https://github.com/CelestialBrain/dria/releases/latest)
 2. Drag `dria.app` to Applications
 3. First launch: right-click → Open (bypasses Gatekeeper)
 4. Settings → AI Model → paste your API key
@@ -131,37 +134,65 @@ npx tauri build      # production (.exe / .msi)
 
 ```
 dria/
-├── dria/                    ← macOS (Swift/SwiftUI)
-│   ├── driaApp.swift
-│   ├── AppState.swift
-│   ├── Models/
+├── dria/                          ← macOS (Swift/SwiftUI)
+│   ├── driaApp.swift              AppDelegate, menu bar, marquee, hotkeys
+│   ├── AppState.swift             Central @Observable state hub
+│   ├── Models/                    ChatMessage, StudyMode, KnowledgeChunk, …
 │   ├── Services/
+│   │   ├── AIProviderFactory.swift     Builds GeminiService for the active provider
+│   │   ├── ChatPersistence.swift       Per-mode chat history in UserDefaults
+│   │   ├── ChatPDFExporter.swift       Export chat as PDF
+│   │   ├── CrashReporter.swift         NSException + signal handlers → log files
+│   │   ├── HangWatchdog.swift          Main-thread responsiveness monitor
+│   │   ├── EmbeddingService.swift      Local NLEmbedding sentence vectors
+│   │   ├── EmbeddingsCache.swift       Persistent on-disk cache
+│   │   ├── KnowledgeBaseService.swift  Semantic + keyword retrieval
+│   │   ├── LLMBridgeServer.swift       Localhost HTTP for Excel add-in
+│   │   ├── GeminiService.swift         Multi-provider AI client
+│   │   ├── ScreenCaptureService.swift  CLI screencapture, cursor marking
+│   │   ├── ClipboardService.swift      Smart question detection
+│   │   ├── VoiceInputService.swift     Speech recognition + waveform
+│   │   ├── ModeManager.swift, OCRService.swift, …
 │   ├── Views/
+│   │   ├── PopoverView.swift, InputView.swift, ResponseView.swift
+│   │   └── Settings/              ← One file per tab (ModesTab, AISettingsTab, CustomizationTab, GeneralSettingsTab)
 │   └── Resources/CaseDigests/
 ├── dria.xcodeproj
-├── desktop/                 ← Windows/cross-platform (Tauri)
+├── desktop/                       ← Windows/cross-platform (Tauri)
 │   ├── src/
 │   │   ├── index.html
 │   │   ├── css/app.css
 │   │   └── js/{app,modes,tools}.js
 │   └── src-tauri/
 │       ├── src/lib.rs
+│       ├── src/embeddings.rs      ← fastembed scaffold (feature-gated)
 │       ├── Cargo.toml
 │       └── tauri.conf.json
-├── appcast.xml              ← Sparkle update feed
+├── excel-addin/                   ← Office add-in (custom Excel functions)
+│   ├── manifest.xml
+│   ├── src/{functions,taskpane,commands}.{html,js,json}
+│   └── README.md
+├── appcast.xml                    ← Sparkle update feed (EdDSA signed)
 ├── README.md
 └── LICENSE
 ```
 
 ## Bug Reports
 
-1. Settings → General → **Export Debug Logs**
-2. Settings → General → **Report Bug** → opens GitHub Issues
-3. Paste debug log into the issue
+1. Settings → General → **Recent Issues** → view any crash or hang logs
+2. Settings → General → **Export Debug Logs** → bundled report
+3. Settings → General → **Report Bug** → opens GitHub Issues
+4. Attach the debug log and any relevant `~/Library/Logs/dria/` files
+
+**Reproduced a hang?** Capture a live stack while it's stuck:
+```bash
+sample $(pgrep dria) 3 -mayDie > ~/dria-hang.txt
+```
+Include `dria-hang.txt` in the issue.
 
 ## Built With
 
-**macOS:** Swift, SwiftUI, AppKit, Sparkle 2.9, Apple Speech, ScreenCaptureKit, Vision, PDFKit, Carbon
+**macOS:** Swift, SwiftUI, AppKit, Sparkle 2.9, Apple Speech, ScreenCaptureKit, Vision, NaturalLanguage (`NLEmbedding`), Network.framework, PDFKit, Carbon
 
 **Windows:** Tauri 2.x, Rust, HTML/CSS/JS, Web Speech API, screenshots crate, arboard
 

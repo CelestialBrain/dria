@@ -2,6 +2,9 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+
+#[cfg(feature = "embeddings")]
+mod embeddings;
 use base64::Engine;
 use tauri_plugin_autostart::MacosLauncher;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -314,20 +317,43 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            capture_screen,
-            get_clipboard_text,
-            set_clipboard_text,
-            read_file_text,
-            set_lock_popover,
-            get_autostart,
-            set_autostart,
-            update_hotkeys,
-            set_tray_status,
-            capture_area,
-            get_active_window_title,
-            toggle_window,
-        ])
+        .invoke_handler({
+            #[cfg(feature = "embeddings")]
+            { tauri::generate_handler![
+                capture_screen,
+                get_clipboard_text,
+                set_clipboard_text,
+                read_file_text,
+                set_lock_popover,
+                get_autostart,
+                set_autostart,
+                update_hotkeys,
+                set_tray_status,
+                capture_area,
+                get_active_window_title,
+                toggle_window,
+                embeddings::embed_texts,
+                embeddings::embed_query,
+                embeddings::content_hash,
+                embeddings::cosine_similarity,
+                embeddings::embeddings_cache_path,
+            ] }
+            #[cfg(not(feature = "embeddings"))]
+            { tauri::generate_handler![
+                capture_screen,
+                get_clipboard_text,
+                set_clipboard_text,
+                read_file_text,
+                set_lock_popover,
+                get_autostart,
+                set_autostart,
+                update_hotkeys,
+                set_tray_status,
+                capture_area,
+                get_active_window_title,
+                toggle_window,
+            ] }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

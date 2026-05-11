@@ -1,0 +1,37 @@
+{
+  "allowCustomDataForDataTypeAny": true,
+  "functions": [
+    {
+      "id": "CHATGPT",
+      "name": "CHATGPT",
+      "description": "Send a prompt to dria and return the answer in this cell.",
+      "helpUrl": "https://github.com/CelestialBrain/dria",
+      "result": { "type": "string" },
+      "parameters": [
+        { "name": "prompt",  "description": "What to ask",                "type": "string" },
+        { "name": "context", "description": "Optional extra context",     "type": "string", "optional": true },
+        { "name": "mode",    "description": "Optional dria mode name",    "type": "string", "optional": true }
+      ]
+    },
+    {
+      "id": "DRIA_CLASSIFY",
+      "name": "DRIA_CLASSIFY",
+      "description": "Classify text into one of the given comma-separated categories.",
+      "result": { "type": "string" },
+      "parameters": [
+        { "name": "text",       "description": "Text to classify",                          "type": "string" },
+        { "name": "categories", "description": "Comma-separated list of category labels",   "type": "string" }
+      ]
+    },
+    {
+      "id": "DRIA_EXTRACT",
+      "name": "DRIA_EXTRACT",
+      "description": "Extract a value from text following an instruction.",
+      "result": { "type": "string" },
+      "parameters": [
+        { "name": "text",        "description": "Source text",                       "type": "string" },
+        { "name": "instruction", "description": "What to extract (e.g., 'the date')","type": "string" }
+      ]
+    }
+  ]
+}

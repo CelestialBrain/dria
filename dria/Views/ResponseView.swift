@@ -5,10 +5,21 @@
 
 import SwiftUI
 
+/// Hard cap on text shown in the chat bubble. Beyond this, we collapse and
+/// let the user expand. Prevents SwiftUI layout spin on huge responses.
+private let displayCharCap = 4000
+
 struct ResponseView: View {
     @Environment(AppState.self) private var appState
     let text: String
     let isStreaming: Bool
+
+    @State private var expanded = false
+
+    private var displayText: String {
+        if expanded || text.count <= displayCharCap { return text }
+        return String(text.prefix(displayCharCap))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -22,14 +33,27 @@ struct ResponseView: View {
                 }
                 .padding(10)
             } else if !text.isEmpty {
-                Text(text)
+                Text(displayText)
                     .textSelection(.enabled)
                     .font(.body)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 8)
 
-                // Copy button
+                if text.count > displayCharCap {
+                    Button {
+                        expanded.toggle()
+                    } label: {
+                        Text(expanded
+                             ? "Show less"
+                             : "Show all (\(text.count - displayCharCap) more chars)")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 8)
+                }
+
                 HStack {
                     Spacer()
                     Button(action: {

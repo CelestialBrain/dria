@@ -194,11 +194,13 @@ private struct MessageBubble: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
 
-                        // Message text
+                        // Message text — capped tighter than before. Long OCR'd
+                        // captures can create runaway layout cost.
                         if !message.content.isEmpty {
-                            Text(message.content.count > 500 ? String(message.content.prefix(500)) + "..." : message.content)
+                            Text(message.content.count > 300 ? String(message.content.prefix(300)) + "…" : message.content)
                                 .textSelection(.enabled)
                                 .font(.body)
+                                .lineLimit(20)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -241,7 +243,10 @@ struct ChatArea: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12) {
+                        // Use plain VStack — chat is capped at 20 messages so lazy adds
+                        // nothing but increases layout cost for variable-height bubbles.
+                        // This was a 100% CPU spin trigger in v1.7.4.
+                        VStack(alignment: .leading, spacing: 12) {
                             ForEach(messages, id: \.id) { message in
                                 MessageBubble(message: message)
                             }

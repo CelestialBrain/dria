@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>dria Settings</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <style>
+      body { font-family: -apple-system, "Segoe UI", sans-serif; padding: 16px; font-size: 13px; color: #1d1d1f; }
+      h2 { margin-top: 0; }
+      label { display: block; margin: 10px 0 4px; font-weight: 600; }
+      input { width: 100%; padding: 6px 8px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; box-sizing: border-box; }
+      button { margin-top: 12px; padding: 8px 14px; background: #1264a3; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+      button:hover { background: #0e4f82; }
+      .status { margin-top: 12px; padding: 8px; border-radius: 4px; }
+      .ok { background: #e6f5ea; color: #1a7a3d; }
+      .err { background: #fde8e8; color: #b42318; }
+      .hint { color: #6e6e73; font-size: 12px; margin: 4px 0 0; }
+      code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <h2>dria for Excel</h2>
+    <p class="hint">Paste your bridge token from dria → Settings → General → Excel Integrations.</p>
+
+    <label for="token">Bridge token</label>
+    <input id="token" type="password" placeholder="paste token..." />
+
+    <label for="url">Bridge URL <span class="hint">(usually leave alone)</span></label>
+    <input id="url" type="text" value="http://127.0.0.1:7842" />
+
+    <button id="save">Save</button>
+    <button id="test">Test connection</button>
+
+    <div id="status"></div>
+
+    <h3>Functions</h3>
+    <p class="hint">
+      <code>=CHATGPT("prompt")</code> — answer in the cell.<br/>
+      <code>=DRIA_CLASSIFY(A1, "Spam,Personal,Work")</code> — pick one label.<br/>
+      <code>=DRIA_EXTRACT(A1, "the invoice total")</code> — pull a value.
+    </p>
+
+    <script>
+      Office.onReady(() => {
+        const tokenInput = document.getElementById("token");
+        const urlInput = document.getElementById("url");
+        const status = document.getElementById("status");
+
+        const settings = Office.context.document.settings;
+        tokenInput.value = settings.get("driaToken") || "";
+        urlInput.value = settings.get("driaBridgeUrl") || "http://127.0.0.1:7842";
+
+        document.getElementById("save").onclick = () => {
+          settings.set("driaToken", tokenInput.value.trim());
+          settings.set("driaBridgeUrl", urlInput.value.trim());
+          settings.saveAsync(() => {
+            // Also mirror in localStorage so the functions runtime can read sync.
+            try { localStorage.setItem("driaToken", tokenInput.value.trim()); } catch {}
+            status.className = "status ok";
+            status.textContent = "Saved.";
+          });
+        };
+
+        document.getElementById("test").onclick = async () => {
+          status.textContent = "Testing...";
+          status.className = "status";
+          try {
+            const res = await fetch(urlInput.value.trim() + "/v1/ping");
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const j = await res.json();
+            status.className = "status ok";
+            status.textContent = "Connected. dria bridge v" + (j.version || "?");
+          } catch (e) {
+            status.className = "status err";
+            status.textContent = "Failed: " + e.message + " — make sure dria is running and the bridge is enabled.";
+          }
+        };
+      });
+    </script>
+  </body>
+</html>

@@ -11,19 +11,34 @@ struct KnowledgeContext {
     let contextString: String
 }
 
-final class KnowledgeBaseService: Sendable {
+final class KnowledgeBaseService: @unchecked Sendable {
     let chunks: [KnowledgeChunk]
+
+    /// Embeddings keyed by chunk.id. When populated, semantic search is used; otherwise keyword fallback.
+    private var embeddings: [UUID: [Float]] = [:]
 
     init(chunks: [KnowledgeChunk] = []) {
         self.chunks = chunks
     }
 
-    func buildContext(for query: String, topK: Int = 8) -> KnowledgeContext {
+    /// Replace embeddings map. Safe to call multiple times.
+    func setEmbeddings(_ map: [UUID: [Float]]) {
+        embeddings = map
+    }
+
+    var hasEmbeddings: Bool { !embeddings.isEmpty }
+
+    func buildContext(for query: String, topK: Int = 8, queryEmbedding: [Float]? = nil) -> KnowledgeContext {
         guard !chunks.isEmpty else {
             return KnowledgeContext(relevantChunks: [], sourceFiles: [], contextString: "")
         }
 
-        let relevant = selectRelevantChunks(for: query, topK: topK)
+        let relevant: [KnowledgeChunk]
+        if let queryVec = queryEmbedding, !embeddings.isEmpty {
+            relevant = selectBySemantic(queryEmbedding: queryVec, topK: topK)
+        } else {
+            relevant = selectByKeyword(for: query, topK: topK)
+        }
         let sourceFiles = Array(Set(relevant.map(\.sourceFileName))).sorted()
 
         let contextString = relevant.map { chunk in
@@ -37,7 +52,18 @@ final class KnowledgeBaseService: Sendable {
         )
     }
 
-    private func selectRelevantChunks(for query: String, topK: Int) -> [KnowledgeChunk] {
+    private func selectBySemantic(queryEmbedding: [Float], topK: Int) -> [KnowledgeChunk] {
+        let scored: [(KnowledgeChunk, Float)] = chunks.compactMap { chunk in
+            guard let vec = embeddings[chunk.id] else { return nil }
+            return (chunk, cosineSimilarity(queryEmbedding, vec))
+        }
+        return scored
+            .sorted { $0.1 > $1.1 }
+            .prefix(topK)
+            .map(\.0)
+    }
+
+    private func selectByKeyword(for query: String, topK: Int) -> [KnowledgeChunk] {
         let stopWords: Set<String> = [
             "the", "and", "for", "are", "but", "not", "you", "all", "can",
             "had", "her", "was", "one", "our", "out", "has", "his", "how",

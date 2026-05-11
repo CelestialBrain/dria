@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>dria Commands</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <script>
+      Office.onReady(() => {});
+
+      async function askSelection(event) {
+        try {
+          await Excel.run(async (context) => {
+            const range = context.workbook.getSelectedRange();
+            range.load(["values", "rowIndex", "columnIndex", "worksheet/id"]);
+            await context.sync();
+
+            const text = (range.values[0] && range.values[0][0]) ? String(range.values[0][0]) : "";
+            if (!text.trim()) {
+              event.completed();
+              return;
+            }
+
+            const token = localStorage.getItem("driaToken") ||
+              Office.context.document.settings.get("driaToken") || "";
+            const url = (Office.context.document.settings.get("driaBridgeUrl") || "http://127.0.0.1:7842") + "/v1/ask";
+
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+              body: JSON.stringify({ prompt: text, useKnowledgeBase: true }),
+            });
+            const json = await res.json();
+            const answer = (json.answer || json.error || "").trim();
+
+            const below = range.getOffsetRange(1, 0);
+            below.values = [[answer]];
+            await context.sync();
+          });
+        } catch (e) {
+          console.error("askSelection failed", e);
+        }
+        event.completed();
+      }
+
+      Office.actions.associate("askSelection", askSelection);
+    </script>
+  </head>
+  <body></body>
+</html>

@@ -11,6 +11,11 @@ import SwiftUI
 struct driaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    init() {
+        // Install crash + signal handlers before anything else can fault.
+        CrashReporter.install()
+    }
+
     var body: some Scene {
         Settings {
             SettingsView()
@@ -43,7 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     // Current AI task for abort
     private var currentAITask: Task<Void, Never>?
 
+    // Main-thread hang watchdog
+    private let hangWatchdog = HangWatchdog()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        hangWatchdog.start()
+
         popover = NSPopover()
         popover.contentSize = NSSize(width: 420, height: 560)
         popover.behavior = .transient
@@ -120,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        hangWatchdog.stop()
         marqueeTimer?.invalidate()
         autoDismissTimer?.invalidate()
         iconColorTimer?.invalidate()

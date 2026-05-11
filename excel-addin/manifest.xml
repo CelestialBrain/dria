@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <Id>2e9b3e7c-3a01-4c1a-9e8a-dria-excel-addin0</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>dria</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="dria for Excel"/>
+  <Description DefaultValue="Call dria from any cell — =CHATGPT(...), =DRIA_CLASSIFY(...), =DRIA_EXTRACT(...)."/>
+  <IconUrl DefaultValue="https://localhost:3000/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:3000/icon-80.png"/>
+  <SupportUrl DefaultValue="https://github.com/CelestialBrain/dria"/>
+
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:3000/taskpane.html"/>
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <Runtimes>
+          <Runtime resid="Dria.Shared.Runtime" lifetime="long"/>
+        </Runtimes>
+
+        <AllFormFactors>
+          <ExtensionPoint xsi:type="CustomFunctions">
+            <Script>
+              <SourceLocation resid="Dria.Functions.Script"/>
+            </Script>
+            <Page>
+              <SourceLocation resid="Dria.Functions.Page"/>
+            </Page>
+            <Metadata>
+              <SourceLocation resid="Dria.Functions.Metadata"/>
+            </Metadata>
+            <Namespace resid="Dria.Namespace"/>
+          </ExtensionPoint>
+        </AllFormFactors>
+
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Dria.GetStarted.Title"/>
+            <Description resid="Dria.GetStarted.Description"/>
+            <LearnMoreUrl resid="Dria.GetStarted.LearnMoreUrl"/>
+          </GetStarted>
+
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Dria.Group">
+                <Label resid="Dria.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Dria.Icon16"/>
+                  <bt:Image size="32" resid="Dria.Icon32"/>
+                  <bt:Image size="80" resid="Dria.Icon80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Dria.AskSelection">
+                  <Label resid="Dria.AskSelection.Label"/>
+                  <Supertip>
+                    <Title resid="Dria.AskSelection.Label"/>
+                    <Description resid="Dria.AskSelection.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Dria.Icon16"/>
+                    <bt:Image size="32" resid="Dria.Icon32"/>
+                    <bt:Image size="80" resid="Dria.Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>askSelection</FunctionName>
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="Dria.OpenSettings">
+                  <Label resid="Dria.OpenSettings.Label"/>
+                  <Supertip>
+                    <Title resid="Dria.OpenSettings.Label"/>
+                    <Description resid="Dria.OpenSettings.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Dria.Icon16"/>
+                    <bt:Image size="32" resid="Dria.Icon32"/>
+                    <bt:Image size="80" resid="Dria.Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Dria.Settings.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Dria.Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+          <FunctionFile resid="Dria.Commands.Url"/>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Dria.Icon16" DefaultValue="https://localhost:3000/icon-16.png"/>
+        <bt:Image id="Dria.Icon32" DefaultValue="https://localhost:3000/icon-32.png"/>
+        <bt:Image id="Dria.Icon80" DefaultValue="https://localhost:3000/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Dria.Functions.Script" DefaultValue="https://localhost:3000/functions.js"/>
+        <bt:Url id="Dria.Functions.Page" DefaultValue="https://localhost:3000/functions.html"/>
+        <bt:Url id="Dria.Functions.Metadata" DefaultValue="https://localhost:3000/functions.json"/>
+        <bt:Url id="Dria.Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html"/>
+        <bt:Url id="Dria.Commands.Url" DefaultValue="https://localhost:3000/commands.html"/>
+        <bt:Url id="Dria.GetStarted.LearnMoreUrl" DefaultValue="https://github.com/CelestialBrain/dria"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Dria.Namespace" DefaultValue="DRIA"/>
+        <bt:String id="Dria.Group.Label" DefaultValue="dria"/>
+        <bt:String id="Dria.AskSelection.Label" DefaultValue="Ask dria"/>
+        <bt:String id="Dria.OpenSettings.Label" DefaultValue="dria Settings"/>
+        <bt:String id="Dria.GetStarted.Title" DefaultValue="dria for Excel is ready"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Dria.AskSelection.Tooltip" DefaultValue="Send selected cell text to dria; answer goes to the cell below."/>
+        <bt:String id="Dria.OpenSettings.Tooltip" DefaultValue="Configure dria bridge token."/>
+        <bt:String id="Dria.GetStarted.Description" DefaultValue="Use =CHATGPT(prompt), =DRIA_CLASSIFY(text, categories), =DRIA_EXTRACT(text, instruction). Set the bridge token from the Home tab → dria Settings."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

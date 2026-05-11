@@ -34,3 +34,4 @@ sa-key.json
 *.pem
 apikey.txt
 *.dmg
+dist/

@@ -99,7 +99,7 @@ final class AppState {
     var selectedModel: String = "gemini-2.5-flash" {
         didSet {
             UserDefaults.standard.set(selectedModel, forKey: "selectedModel")
-            geminiService = nil // force recreate with new model
+            aiFactory.invalidate() // force recreate with new model
         }
     }
 
@@ -157,9 +157,18 @@ final class AppState {
         didSet { UserDefaults.standard.set(copyMode, forKey: "copyMode") }
     }
 
+    /// Local HTTP bridge on 127.0.0.1:7842 for Excel add-in and other integrations.
+    var bridgeEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(bridgeEnabled, forKey: "bridgeEnabled")
+            if bridgeEnabled { startBridgeServer() } else { bridgeServer.stop() }
+        }
+    }
+
     // MARK: - Services
     let modeManager = ModeManager()
     let keychain = KeychainService()
+    private let chatPersistence = ChatPersistence()
     let clipboard = ClipboardService()
     let screenCapture = ScreenCaptureService()
     let ocr = OCRService()
@@ -167,9 +176,12 @@ final class AppState {
     let focusDetector = FocusDetector()
     let updateChecker = UpdateChecker()
     let voice = VoiceInputService()
+    let bridgeServer = LLMBridgeServer()
     private var knowledgeBase: KnowledgeBaseService?
-    private var geminiService: GeminiService?
+    private let aiFactory = AIProviderFactory()
     private var knowledgeBaseTask: Task<Void, Never>?
+    private let embeddingsCache = EmbeddingsCache()
+    private var embeddingsTask: Task<Void, Never>?
 
     // MARK: - Callbacks
     var onMarqueeUpdate: ((String?) -> Void)?
@@ -190,19 +202,19 @@ final class AppState {
 
     var claudeApiKey: String {
         get { UserDefaults.standard.string(forKey: "claudeApiKey") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "claudeApiKey"); geminiService = nil }
+        set { UserDefaults.standard.set(newValue, forKey: "claudeApiKey"); aiFactory.invalidate() }
     }
 
     /// OpenAI-compatible provider API key
     var openAIApiKey: String {
         get { UserDefaults.standard.string(forKey: "openAIApiKey") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "openAIApiKey"); geminiService = nil }
+        set { UserDefaults.standard.set(newValue, forKey: "openAIApiKey"); aiFactory.invalidate() }
     }
 
     /// OpenAI-compatible base URL
     var openAIBaseURL: String {
         get { UserDefaults.standard.string(forKey: "openAIBaseURL") ?? "https://api.openai.com/v1" }
-        set { UserDefaults.standard.set(newValue, forKey: "openAIBaseURL"); geminiService = nil }
+        set { UserDefaults.standard.set(newValue, forKey: "openAIBaseURL"); aiFactory.invalidate() }
     }
 
     /// OpenAI-compatible provider name (for display)
@@ -241,19 +253,19 @@ final class AppState {
             }
             return path
         }
-        set { UserDefaults.standard.set(newValue, forKey: "serviceAccountKeyPath"); geminiService = nil }
+        set { UserDefaults.standard.set(newValue, forKey: "serviceAccountKeyPath"); aiFactory.invalidate() }
     }
 
     var vertexProject: String {
         get { UserDefaults.standard.string(forKey: "vertexProject") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "vertexProject"); geminiService = nil }
+        set { UserDefaults.standard.set(newValue, forKey: "vertexProject"); aiFactory.invalidate() }
     }
 
     /// "vertexai", "googleai", or "claude"
     var aiProvider: String = "googleai" {
         didSet {
             UserDefaults.standard.set(aiProvider, forKey: "aiProvider")
-            geminiService = nil
+            aiFactory.invalidate()
             syncModelToProvider()
         }
     }
@@ -286,7 +298,7 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(responseLanguage, forKey: "responseLanguage")
             voice.setLanguage(responseLanguage)
-            geminiService = nil // rebuild with new language in system prompt
+            aiFactory.invalidate() // rebuild with new language in system prompt
         }
     }
 
@@ -321,6 +333,7 @@ final class AppState {
         audioSource = AudioSource(rawValue: UserDefaults.standard.string(forKey: "audioSource") ?? "Microphone") ?? .mic
         voice.audioSource = audioSource
         copyMode = UserDefaults.standard.string(forKey: "copyMode") ?? "short"
+        bridgeEnabled = UserDefaults.standard.bool(forKey: "bridgeEnabled")
 
         aiProvider = UserDefaults.standard.string(forKey: "aiProvider") ?? "googleai"
 
@@ -335,6 +348,63 @@ final class AppState {
         // Setup clipboard callbacks but DON'T start monitoring automatically
         // User must toggle "Watching" button to start — avoids TCC crash
         setupClipboardDetection()
+
+        if bridgeEnabled { startBridgeServer() }
+    }
+
+    // MARK: - Bridge Server
+
+    private func startBridgeServer() {
+        bridgeServer.onListModes = { [weak self] in
+            self?.modes.map(\.name) ?? []
+        }
+        bridgeServer.onAsk = { [weak self] prompt, modeName, useKB in
+            guard let self else { return .failure(NSError(domain: "dria", code: -1)) }
+            return await self.answerForBridge(prompt: prompt, modeName: modeName, useKB: useKB)
+        }
+        bridgeServer.start()
+    }
+
+    private func answerForBridge(prompt: String, modeName: String?, useKB: Bool) async -> Result<String, Error> {
+        // Optionally switch context to a named mode without affecting active UI mode
+        let mode: StudyMode
+        if let modeName, let m = modes.first(where: { $0.name.caseInsensitiveCompare(modeName) == .orderedSame }) {
+            mode = m
+        } else {
+            mode = activeMode
+        }
+
+        let config = AIProviderFactory.Config(
+            provider: aiProvider,
+            modelName: selectedModel,
+            modeId: mode.id,
+            mode: mode,
+            language: responseLanguage,
+            keychain: keychain,
+            serviceAccountKeyPath: serviceAccountKeyPath,
+            vertexProject: vertexProject,
+            claudeApiKey: claudeApiKey,
+            openAIApiKey: openAIApiKey,
+            openAIBaseURL: openAIBaseURL,
+            openAIProviderName: openAIProviderName
+        )
+        let gemini: GeminiService
+        switch aiFactory.makeService(config) {
+        case .success(let svc): gemini = svc
+        case .failure(let err): return .failure(err)
+        }
+
+        let context = useKB ? (await buildKBContext(for: prompt)?.contextString ?? "") : ""
+
+        do {
+            var buffer = ""
+            for try await chunk in gemini.ask(question: prompt, context: context, history: []) {
+                buffer += chunk
+            }
+            return .success(buffer)
+        } catch {
+            return .failure(error)
+        }
     }
 
     private func setupClipboardDetection() {
@@ -378,7 +448,7 @@ final class AppState {
         isProcessing = true
         onMarqueeUpdate?("🔄 Answering \(question.type.label)...")
 
-        let context = knowledgeBase?.buildContext(for: rawText).contextString ?? ""
+        let context = await buildKBContext(for: rawText)?.contextString ?? ""
 
         var prompt: String
         switch question.type {
@@ -420,43 +490,17 @@ final class AppState {
 
     // MARK: - Per-Mode Chat Persistence
 
-    private static let maxPersistedMessages = 50
-
-    /// Migrate old shared chatHistory to the General mode (one-time)
     private func migrateOldChatHistory() {
-        let oldKey = "chatHistory"
-        let newKey = chatKey(for: StudyMode.general.id)
-        // Only migrate if old key exists and new key doesn't
-        guard UserDefaults.standard.data(forKey: oldKey) != nil,
-              UserDefaults.standard.data(forKey: newKey) == nil else { return }
-        // Copy old data to General mode
-        if let data = UserDefaults.standard.data(forKey: oldKey) {
-            UserDefaults.standard.set(data, forKey: newKey)
-        }
-        // Remove old key
-        UserDefaults.standard.removeObject(forKey: oldKey)
-    }
-
-    private func chatKey(for modeId: UUID) -> String {
-        "chatHistory_\(modeId.uuidString)"
+        chatPersistence.migrateOldChatHistory()
     }
 
     private func persistChatHistory() {
-        let key = chatKey(for: activeModeId)
-        let toSave = Array(chatHistory.suffix(Self.maxPersistedMessages))
-        if let data = try? JSONEncoder().encode(toSave) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
+        chatPersistence.save(chatHistory, for: activeModeId)
         notifyChatChanged()
     }
 
     private func loadChatHistory(for modeId: UUID) -> [ChatMessage] {
-        let key = chatKey(for: modeId)
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let messages = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
-            return []
-        }
-        return Array(messages.suffix(Self.maxPersistedMessages))
+        chatPersistence.load(for: modeId)
     }
 
     // MARK: - Mode Management
@@ -466,7 +510,7 @@ final class AppState {
         persistChatHistory()
 
         activeModeId = mode.id
-        geminiService = nil
+        aiFactory.invalidate()
         loadKnowledgeBase()
 
         // Load the new mode's chat
@@ -497,7 +541,7 @@ final class AppState {
             modes[idx] = mode
             modeManager.saveModes(modes)
             if mode.id == activeModeId {
-                geminiService = nil
+                aiFactory.invalidate()
                 loadKnowledgeBase()
             }
         }
@@ -539,6 +583,7 @@ final class AppState {
 
     private func loadKnowledgeBase() {
         knowledgeBaseTask?.cancel()
+        embeddingsTask?.cancel()
         let mode = activeMode
         let manager = modeManager
         knowledgeBaseTask = Task.detached(priority: .userInitiated) {
@@ -549,71 +594,90 @@ final class AppState {
             await MainActor.run {
                 self.knowledgeBase = kb
             }
+            await self.prepareEmbeddings(for: kb)
         }
     }
 
-    private func getOrCreateGemini() -> GeminiService? {
-        if geminiService != nil && geminiService?.modelName == selectedModel && geminiService?.modeId == activeModeId {
-            return geminiService
-        }
+    /// Build embeddings for KB chunks in the background using Apple's on-device NLEmbedding.
+    /// Works offline for every AI provider — no API key needed.
+    private func prepareEmbeddings(for kb: KnowledgeBaseService) async {
+        guard !kb.chunks.isEmpty else { return }
+        let language = responseLanguage
+        let cache = embeddingsCache
+        let chunks = kb.chunks
 
-        let prompt = GeminiService.buildSystemPrompt(for: activeMode, language: responseLanguage)
+        await Task.detached(priority: .utility) {
+            guard let embedder = LocalEmbedder.make(languageCode: language) else { return }
 
-        if aiProvider == "vertexai" {
-            let saPath = serviceAccountKeyPath
-            guard !saPath.isEmpty && FileManager.default.fileExists(atPath: saPath) else {
-                // No SA key — try falling back to Google AI if API key exists
-                if let apiKey = try? keychain.getAPIKey(), !apiKey.isEmpty {
-                    geminiService = GeminiService(apiKey: apiKey, modelName: selectedModel, modeId: activeModeId, systemPrompt: prompt)
-                    return geminiService
+            let pairs: [(UUID, String)] = chunks.map { ($0.id, contentHash($0.content)) }
+            let hashes = pairs.map { $0.1 }
+            let missing = await cache.missingHashes(from: hashes)
+
+            if !missing.isEmpty {
+                let hashSet = Set(missing)
+                var toCache: [(String, [Float])] = []
+                toCache.reserveCapacity(missing.count)
+                for chunk in chunks {
+                    let h = contentHash(chunk.content)
+                    guard hashSet.contains(h) else { continue }
+                    if let vec = embedder.embed(chunk.content) {
+                        toCache.append((h, vec))
+                    }
                 }
-                errorMessage = "No AI provider configured. Go to Settings → AI Model."
-                return nil
+                if !toCache.isEmpty {
+                    await cache.setMany(toCache)
+                    await cache.flush()
+                }
             }
-            do {
-                let proj = vertexProject.isEmpty ? nil : vertexProject
-                geminiService = try GeminiService(
-                    serviceAccountKeyPath: saPath,
-                    project: proj,
-                    modelName: selectedModel,
-                    modeId: activeModeId,
-                    systemPrompt: prompt
-                )
-                return geminiService
-            } catch {
-                let err = "Vertex AI: \(error)"
-                errorMessage = err
-                onMarqueeUpdate?("⚠️ \(err)")
-                return nil
+
+            var map: [UUID: [Float]] = [:]
+            for (chunkId, h) in pairs {
+                if let v = await cache.get(h) { map[chunkId] = v }
             }
-        } else if aiProvider == "claude" {
-            let key = claudeApiKey
-            guard !key.isEmpty else {
-                errorMessage = "No Claude API key set. Go to Settings → AI Model."
-                return nil
+            await MainActor.run {
+                if self.knowledgeBase === kb {
+                    kb.setEmbeddings(map)
+                }
             }
-            geminiService = GeminiService(claudeApiKey: key, modelName: selectedModel, modeId: activeModeId, systemPrompt: prompt)
-            return geminiService
-        } else if aiProvider == "openai-compatible" {
-            let key = openAIApiKey
-            let base = openAIBaseURL
-            guard !key.isEmpty || base.contains("localhost") else {
-                errorMessage = "No API key set for \(openAIProviderName). Go to Settings → AI Model."
-                return nil
-            }
-            geminiService = GeminiService(
-                openAIKey: key, baseURL: base, modelName: selectedModel,
-                providerName: openAIProviderName, modeId: activeModeId, systemPrompt: prompt
-            )
-            return geminiService
-        } else {
-            // Google AI API key
-            guard let apiKey = try? keychain.getAPIKey(), !apiKey.isEmpty else {
-                errorMessage = "No API key set. Go to Settings → AI Model."
-                return nil
-            }
-            geminiService = GeminiService(apiKey: apiKey, modelName: selectedModel, modeId: activeModeId, systemPrompt: prompt)
-            return geminiService
+        }.value
+    }
+
+    /// Async wrapper around buildContext. Computes a local query embedding when KB has vectors.
+    private func buildKBContext(for query: String, topK: Int = 8) async -> KnowledgeContext? {
+        guard let kb = knowledgeBase else { return nil }
+        guard kb.hasEmbeddings else {
+            return kb.buildContext(for: query, topK: topK)
+        }
+        let language = responseLanguage
+        let queryVec: [Float]? = await Task.detached(priority: .userInitiated) {
+            LocalEmbedder.make(languageCode: language)?.embed(query)
+        }.value
+        return kb.buildContext(for: query, topK: topK, queryEmbedding: queryVec)
+    }
+
+    private func getOrCreateGemini() -> GeminiService? {
+        let config = AIProviderFactory.Config(
+            provider: aiProvider,
+            modelName: selectedModel,
+            modeId: activeModeId,
+            mode: activeMode,
+            language: responseLanguage,
+            keychain: keychain,
+            serviceAccountKeyPath: serviceAccountKeyPath,
+            vertexProject: vertexProject,
+            claudeApiKey: claudeApiKey,
+            openAIApiKey: openAIApiKey,
+            openAIBaseURL: openAIBaseURL,
+            openAIProviderName: openAIProviderName
+        )
+        switch aiFactory.makeService(config) {
+        case .success(let svc):
+            return svc
+        case .failure(let err):
+            let msg = err.errorDescription ?? "AI provider error"
+            errorMessage = msg
+            if case .vertexFailed = err { onMarqueeUpdate?("⚠️ \(msg)") }
+            return nil
         }
     }
 
@@ -749,7 +813,7 @@ final class AppState {
         if let clipText { queryHint += " \(clipText)" }
         if queryHint.isEmpty { queryHint = "screenshot question" }
 
-        let context = knowledgeBase?.buildContext(for: queryHint).contextString ?? ""
+        let context = await buildKBContext(for: queryHint)?.contextString ?? ""
 
         let focus = focusDetector.currentFocus()
         let focusContext = "User is viewing: \(focus.appName)" + (focus.windowTitle.map { " — \($0)" } ?? "")
@@ -825,7 +889,7 @@ final class AppState {
         var queryHint = "\(question) \(ocrText ?? "")"
         if let clipText, !clipText.isEmpty { queryHint += " \(clipText)" }
 
-        let context = knowledgeBase?.buildContext(for: queryHint).contextString ?? ""
+        let context = await buildKBContext(for: queryHint)?.contextString ?? ""
 
         let focus = focusDetector.currentFocus()
         let focusContext = "User is viewing: \(focus.appName)" + (focus.windowTitle.map { " — \($0)" } ?? "")
@@ -903,7 +967,7 @@ final class AppState {
 
         // Include clipboard text as extra context — skip NSImage read to avoid TCC crash
         let clipText = NSPasteboard.general.string(forType: .string)
-        let kbContext = knowledgeBase?.buildContext(for: question)
+        let kbContext = await buildKBContext(for: question)
         var contextString = kbContext?.contextString ?? ""
         let sourceFiles = kbContext?.sourceFiles ?? []
         if let clipText, !clipText.isEmpty {
@@ -949,7 +1013,7 @@ final class AppState {
     func clearChat() {
         chatHistory.removeAll()
         AttachmentCache.shared.clear()
-        UserDefaults.standard.removeObject(forKey: chatKey(for: activeModeId))
+        chatPersistence.clear(for: activeModeId)
         notifyChatChanged()
         currentResponse = ""
         currentQuestion = ""
@@ -1041,7 +1105,7 @@ final class AppState {
 
     func generatePracticeQuestion() async {
         guard let gemini = getOrCreateGemini() else { return }
-        var context = knowledgeBase?.buildContext(for: "practice question exam").contextString ?? ""
+        var context = await buildKBContext(for: "practice question exam")?.contextString ?? ""
         if context.count > 3000 { context = String(context.prefix(3000)) }
         let prompt = "Generate ONE practice exam question based on the study materials. Vary the type (MC, T/F, essay, identification). Give ONLY the question, not the answer."
 
@@ -1076,7 +1140,7 @@ final class AppState {
     func generateFlashcards(count: Int = 10) async -> [(front: String, back: String)] {
         guard let gemini = getOrCreateGemini() else { return [] }
         // Limit context to 3000 chars to avoid timeout with large knowledge bases
-        var context = knowledgeBase?.buildContext(for: "flashcards key concepts definitions rules").contextString ?? ""
+        var context = await buildKBContext(for: "flashcards key concepts definitions rules")?.contextString ?? ""
         if context.count > 3000 { context = String(context.prefix(3000)) }
         let prompt = """
         Generate \(count) flashcards from the study materials. Format each as:
@@ -1113,66 +1177,10 @@ final class AppState {
 
     // MARK: - Export Chat to PDF
 
+    private let pdfExporter = ChatPDFExporter()
+
     func exportChatToPDF() -> URL? {
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("dria-chat-\(activeMode.name).pdf")
-
-        let pageWidth: CGFloat = 612
-        let pageHeight: CGFloat = 792
-        let margin: CGFloat = 50
-
-        var context = CGContext(tempURL as CFURL, mediaBox: nil, nil)
-        guard context != nil else { return nil }
-
-        let textWidth = pageWidth - margin * 2
-        var yPosition: CGFloat = pageHeight - margin
-        let lineHeight: CGFloat = 16
-
-        func newPage() {
-            context?.endPage()
-            context?.beginPage(mediaBox: nil)
-            yPosition = pageHeight - margin
-        }
-
-        context?.beginPage(mediaBox: nil)
-
-        // Title
-        let titleAttr: [NSAttributedString.Key: Any] = [
-            .font: NSFont.boldSystemFont(ofSize: 16)
-        ]
-        let title = "dria Chat Export — \(activeMode.name)" as NSString
-        title.draw(at: CGPoint(x: margin, y: yPosition - 20), withAttributes: titleAttr)
-        yPosition -= 40
-
-        let bodyAttr: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11)
-        ]
-        let roleAttr: [NSAttributedString.Key: Any] = [
-            .font: NSFont.boldSystemFont(ofSize: 11)
-        ]
-
-        for msg in chatHistory {
-            let role = msg.role == .user ? "You" : "dria"
-            let roleText = "\(role):" as NSString
-            let bodyText = msg.content as NSString
-
-            // Estimate height
-            let estimatedLines = Int(ceil(CGFloat(msg.content.count) / (textWidth / 6.5)))
-            let blockHeight = CGFloat(estimatedLines + 1) * lineHeight + 10
-
-            if yPosition - blockHeight < margin { newPage() }
-
-            roleText.draw(at: CGPoint(x: margin, y: yPosition), withAttributes: roleAttr)
-            yPosition -= lineHeight
-
-            let rect = CGRect(x: margin, y: yPosition - blockHeight + lineHeight, width: textWidth, height: blockHeight)
-            bodyText.draw(in: rect, withAttributes: bodyAttr)
-            yPosition -= blockHeight + 5
-        }
-
-        context?.endPage()
-        context?.closePDF()
-
-        return tempURL
+        pdfExporter.export(history: chatHistory, modeName: activeMode.name)
     }
 
     // MARK: - Ollama Fallback
@@ -1194,5 +1202,6 @@ final class AppState {
         clipboard.stopMonitoring()
         voice.stopListening()
         hotkey.unregister()
+        bridgeServer.stop()
     }
 }
