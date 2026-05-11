@@ -7,6 +7,17 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.12</title>
+            <description><![CDATA[<ul>
+                <li>Diagnostic: every ⌘⌥E round-trip now writes a log to ~/Library/Logs/dria/excel-&lt;timestamp&gt;.log with the prompt, raw model response, and post-stripper output. Lets us diagnose "nothing happened" reports without guessing.</li>
+                <li>Better marquee message when the model returns empty — distinguishes "model returned nothing" from "stripper reduced to empty (raw: …)".</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 22:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.12/dria-v1.7.12.dmg" sparkle:version="23" sparkle:shortVersionString="1.7.12" length="2987944" type="application/octet-stream" sparkle:edSignature="y2YIXFP8Psd9ZH/236hbmmT7Bk6QTZvDAQyGmJ683OJ+jjnBt6GAeoYgKTc47QgPI+bsZQAqKZ3H2S7iQ8B9Dg==" />
+        </item>
+
+        <item>
             <title>dria v1.7.11</title>
             <description><![CDATA[<ul>
                 <li><b>Honest fix: whole-sheet context was silently broken in v1.7.9 and v1.7.10.</b> Three AppleScript syntax bugs caused workbookContext to error out and fall back to single-cell mode, which is why the AI hallucinated cell values: it had zero sheet context. Verified end-to-end against live Excel via NSAppleScript.</li>

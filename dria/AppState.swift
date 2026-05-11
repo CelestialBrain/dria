@@ -746,6 +746,25 @@ final class AppState {
         hotkey.register()
     }
 
+    /// Write a short log entry for every Excel hotkey round-trip. Lets us
+    /// recover the raw model output when the user reports "nothing happened"
+    /// — otherwise we have to guess between an empty model response, an
+    /// overly aggressive stripper, or a write failure.
+    private func logExcelInteraction(prompt: String, raw: String, stripped: String) {
+        let dir = NSHomeDirectory() + "/Library/Logs/dria"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = "\(dir)/excel-\(CrashReporter.timestamp()).log"
+        var body = "[dria excel hotkey] \(Date())\n"
+        body += "Version: \(CrashReporter.appVersion)\n\n"
+        body += "--- prompt (first 2000 chars) ---\n"
+        body += String(prompt.prefix(2000)) + "\n\n"
+        body += "--- raw answer (\(raw.count) chars) ---\n"
+        body += String(raw.prefix(4000)) + "\n\n"
+        body += "--- after preamble stripper (\(stripped.count) chars) ---\n"
+        body += String(stripped.prefix(4000)) + "\n"
+        try? body.write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
     /// Defensive cleanup for Excel answers: models routinely emit
     /// "Cell H16 contains the value X. --- explanation…" despite the prompt
     /// asking for the value only. We salvage the first informational token
@@ -855,11 +874,15 @@ final class AppState {
             for try await chunk in gemini.ask(question: prompt, context: ctx, history: []) {
                 buffer += chunk
             }
-            var answer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawAnswer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
             // Strip common preamble patterns the model leaks despite our prompt.
-            answer = stripExcelPreamble(answer)
+            let answer = stripExcelPreamble(rawAnswer)
+            // Always log the raw + stripped pair so empty-result mysteries
+            // are diagnosable. Lives in ~/Library/Logs/dria/excel-*.log.
+            logExcelInteraction(prompt: prompt, raw: rawAnswer, stripped: answer)
             guard !answer.isEmpty else {
-                onMarqueeUpdate?("⚠️ Empty response")
+                let detail = rawAnswer.isEmpty ? "model returned nothing" : "stripper reduced response to empty (raw: \(rawAnswer.prefix(60)))"
+                onMarqueeUpdate?("⚠️ Empty response — \(detail)")
                 return
             }
             let wrote = ExcelScript.writeBelowSelection(answer)
