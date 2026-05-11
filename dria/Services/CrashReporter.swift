@@ -99,27 +99,54 @@ enum CrashReporter {
     /// Signals we want to catch. Skipping SIGKILL/SIGSTOP (can't), SIGPIPE (noisy).
     private static let catchSignals: [Int32] = [SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
 
-    private static func installSignalHandlers() {
-        for sig in catchSignals {
-            signal(sig) { signo in
-                // Signal handlers should be async-signal-safe. We violate this
-                // pragmatically (Swift String formatting, file I/O) — same as
-                // what KSCrash/PLCrashReporter do in their simple paths. The
-                // alternative is no log at all.
-                let path = CrashReporter.newLogPath(category: "crash")
-                let name = CrashReporter.name(for: signo)
-                var body = "[dria crash log] fatal signal \(signo) (\(name))\n"
-                body += "Date: \(Date())\n"
-                body += "Version: \(CrashReporter.appVersion)\n"
-                body += "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
-                body += "Backtrace:\n"
-                for frame in Thread.callStackSymbols { body += frame + "\n" }
-                _ = try? body.write(toFile: path, atomically: true, encoding: .utf8)
+    /// Pre-allocated alternate stack so SIGSEGV from stack overflow can still
+    /// invoke our handler instead of compounding the fault. Kept alive for
+    /// the lifetime of the process — DO NOT free this pointer.
+    private static let altStackSize: Int = max(Int(MINSIGSTKSZ), 64 * 1024)
+    nonisolated(unsafe) private static let altStackPtr: UnsafeMutableRawPointer = {
+        let p = UnsafeMutableRawPointer.allocate(byteCount: altStackSize, alignment: 16)
+        var ss = stack_t()
+        ss.ss_sp = p
+        ss.ss_size = altStackSize
+        ss.ss_flags = 0
+        _ = sigaltstack(&ss, nil)
+        return p
+    }()
 
-                // Reset to default and re-raise so macOS writes its own report.
-                signal(signo, SIG_DFL)
-                raise(signo)
-            }
+    private static func installSignalHandlers() {
+        // Force the alt-stack lazy init.
+        _ = altStackPtr
+
+        var sa = sigaction()
+        sa.__sigaction_u.__sa_sigaction = { signo, _, _ in
+            // Signal handlers should be async-signal-safe. We violate this
+            // pragmatically (Swift String formatting, file I/O) — same as
+            // what KSCrash/PLCrashReporter do in their simple paths. The
+            // alternative is no log at all.
+            let path = CrashReporter.newLogPath(category: "crash")
+            let name = CrashReporter.name(for: signo)
+            var body = "[dria crash log] fatal signal \(signo) (\(name))\n"
+            body += "Date: \(Date())\n"
+            body += "Version: \(CrashReporter.appVersion)\n"
+            body += "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)\n\n"
+            body += "Backtrace:\n"
+            for frame in Thread.callStackSymbols { body += frame + "\n" }
+            _ = try? body.write(toFile: path, atomically: true, encoding: .utf8)
+
+            // Reset to default and re-raise so macOS writes its own report.
+            // Use signal() here only because we're about to exit anyway.
+            signal(signo, SIG_DFL)
+            raise(signo)
+        }
+        // SA_SIGINFO so we use the three-arg handler form; SA_ONSTACK so we
+        // run on our pre-allocated alternate stack (critical for stack overflow);
+        // SA_RESETHAND so we naturally chain to the default after first hit.
+        sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESETHAND
+        sigemptyset(&sa.sa_mask)
+
+        for sig in catchSignals {
+            var prev = sigaction()
+            _ = sigaction(sig, &sa, &prev)
         }
     }
 

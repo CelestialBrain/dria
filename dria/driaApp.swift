@@ -48,11 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     // Current AI task for abort
     private var currentAITask: Task<Void, Never>?
 
-    // Main-thread hang watchdog
-    private let hangWatchdog = HangWatchdog()
-
     func applicationDidFinishLaunching(_ notification: Notification) {
-        hangWatchdog.start()
+        appState.hangWatchdog.start()
 
         popover = NSPopover()
         popover.contentSize = NSSize(width: 420, height: 560)
@@ -130,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        hangWatchdog.stop()
+        appState.hangWatchdog.stop()
         marqueeTimer?.invalidate()
         autoDismissTimer?.invalidate()
         iconColorTimer?.invalidate()

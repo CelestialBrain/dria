@@ -177,6 +177,7 @@ final class AppState {
     let updateChecker = UpdateChecker()
     let voice = VoiceInputService()
     let bridgeServer = LLMBridgeServer()
+    let hangWatchdog = HangWatchdog()
     private var knowledgeBase: KnowledgeBaseService?
     private let aiFactory = AIProviderFactory()
     private var knowledgeBaseTask: Task<Void, Never>?
@@ -558,6 +559,8 @@ final class AppState {
     }
 
     func addFile(to mode: StudyMode, from url: URL) async -> Bool {
+        let opId = hangWatchdog.beginLongOperation("import \(url.lastPathComponent)")
+        defer { hangWatchdog.endLongOperation(opId) }
         guard let result = await modeManager.addFile(to: mode, from: url) else { return false }
         AnalyticsService.shared.track(.fileImport)
         if let idx = modes.firstIndex(where: { $0.id == mode.id }) {
@@ -586,60 +589,78 @@ final class AppState {
         embeddingsTask?.cancel()
         let mode = activeMode
         let manager = modeManager
-        knowledgeBaseTask = Task.detached(priority: .userInitiated) {
-            guard !Task.isCancelled else { return }
+        knowledgeBaseTask = Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            if Task.isCancelled { return }
             let chunks = manager.loadChunks(for: mode)
-            guard !Task.isCancelled else { return }
+            if Task.isCancelled { return }
             let kb = KnowledgeBaseService(chunks: chunks)
             await MainActor.run {
                 self.knowledgeBase = kb
+                // Embeddings get their own cancellable task so switching modes
+                // mid-index cleanly stops the work instead of leaking until done.
+                self.embeddingsTask = Task.detached(priority: .utility) { [weak self] in
+                    await self?.prepareEmbeddings(for: kb)
+                }
             }
-            await self.prepareEmbeddings(for: kb)
         }
     }
 
-    /// Build embeddings for KB chunks in the background using Apple's on-device NLEmbedding.
-    /// Works offline for every AI provider — no API key needed.
+    /// Build embeddings for KB chunks in the background. Runs inside a
+    /// dedicated cancellable Task (assigned to `embeddingsTask`) so mid-index
+    /// mode switches stop the work cleanly. Checks `Task.isCancelled` between
+    /// every chunk to keep cancellation latency under one embed.
     private func prepareEmbeddings(for kb: KnowledgeBaseService) async {
         guard !kb.chunks.isEmpty else { return }
+        if Task.isCancelled { return }
+        let watchdog = hangWatchdog
+        let opId = watchdog.beginLongOperation("prepareEmbeddings (\(kb.chunks.count) chunks)")
+        defer { watchdog.endLongOperation(opId) }
+
         let language = responseLanguage
         let cache = embeddingsCache
         let chunks = kb.chunks
 
-        await Task.detached(priority: .utility) {
-            guard let embedder = LocalEmbedder.make(languageCode: language) else { return }
+        guard let embedder = await LocalEmbedder.make(languageCode: language) else { return }
+        if Task.isCancelled { return }
 
-            let pairs: [(UUID, String)] = chunks.map { ($0.id, contentHash($0.content)) }
-            let hashes = pairs.map { $0.1 }
-            let missing = await cache.missingHashes(from: hashes)
+        let backendID = embedder.backendID
+        let expectedDim = embedder.dimension
 
-            if !missing.isEmpty {
-                let hashSet = Set(missing)
-                var toCache: [(String, [Float])] = []
-                toCache.reserveCapacity(missing.count)
-                for chunk in chunks {
-                    let h = contentHash(chunk.content)
-                    guard hashSet.contains(h) else { continue }
-                    if let vec = embedder.embed(chunk.content) {
-                        toCache.append((h, vec))
-                    }
-                }
-                if !toCache.isEmpty {
-                    await cache.setMany(toCache)
-                    await cache.flush()
-                }
-            }
+        let pairs: [(UUID, String)] = chunks.map { ($0.id, cacheKey(content: $0.content, backendID: backendID)) }
+        let hashes = pairs.map { $0.1 }
+        let missing = await cache.missingHashes(from: hashes)
+        if Task.isCancelled { return }
 
-            var map: [UUID: [Float]] = [:]
-            for (chunkId, h) in pairs {
-                if let v = await cache.get(h) { map[chunkId] = v }
-            }
-            await MainActor.run {
-                if self.knowledgeBase === kb {
-                    kb.setEmbeddings(map)
+        if !missing.isEmpty {
+            let hashSet = Set(missing)
+            var toCache: [(String, [Float])] = []
+            toCache.reserveCapacity(missing.count)
+            for chunk in chunks {
+                if Task.isCancelled { return }
+                let h = cacheKey(content: chunk.content, backendID: backendID)
+                guard hashSet.contains(h) else { continue }
+                if let vec = embedder.embed(chunk.content), vec.count == expectedDim {
+                    toCache.append((h, vec))
                 }
             }
-        }.value
+            if !toCache.isEmpty {
+                await cache.setMany(toCache)
+                await cache.flush()
+            }
+        }
+
+        if Task.isCancelled { return }
+
+        var map: [UUID: [Float]] = [:]
+        for (chunkId, h) in pairs {
+            if let v = await cache.get(h), v.count == expectedDim { map[chunkId] = v }
+        }
+        await MainActor.run {
+            if self.knowledgeBase === kb {
+                kb.setEmbeddings(map)
+            }
+        }
     }
 
     /// Async wrapper around buildContext. Computes a local query embedding when KB has vectors.
@@ -649,13 +670,21 @@ final class AppState {
             return kb.buildContext(for: query, topK: topK)
         }
         let language = responseLanguage
-        let queryVec: [Float]? = await Task.detached(priority: .userInitiated) {
-            LocalEmbedder.make(languageCode: language)?.embed(query)
-        }.value
+        let queryVec: [Float]? = await {
+            guard let embedder = await LocalEmbedder.make(languageCode: language) else { return nil }
+            return await Task.detached(priority: .userInitiated) {
+                embedder.embed(query)
+            }.value
+        }()
         return kb.buildContext(for: query, topK: topK, queryEmbedding: queryVec)
     }
 
     private func getOrCreateGemini() -> GeminiService? {
+        // Vertex AI JWT mint can take several seconds on a flaky network —
+        // protect the watchdog from killing us mid-mint.
+        let opId = (aiProvider == "vertexai") ? hangWatchdog.beginLongOperation("vertex JWT mint") : nil
+        defer { if let opId { hangWatchdog.endLongOperation(opId) } }
+
         let config = AIProviderFactory.Config(
             provider: aiProvider,
             modelName: selectedModel,

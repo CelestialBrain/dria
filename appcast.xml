@@ -7,6 +7,21 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.7</title>
+            <description><![CDATA[<ul>
+                <li>Retrieval: switched to Apple NLContextualEmbedding (macOS 14+ transformer) with NLEmbedding fallback. Cache keys now include the backend identifier so model swaps invalidate stale vectors automatically.</li>
+                <li>Stability: HangWatchdog raised to 60s fatal threshold and gained a beginLongOperation/endLongOperation API. Cold embedding loads, KB indexing, Vertex JWT mint, and large OCR are now wrapped so legitimate slow work no longer trips the watchdog. Hang logs include a real main-thread backtrace captured via /usr/bin/sample.</li>
+                <li>Crash capture: sigaltstack + sigaction(3-arg) so stack-overflow SIGSEGV can still run our handler instead of compounding the fault.</li>
+                <li>Bridge security: HTTP parser now RFC 9112-compliant — rejects Content-Length + Transfer-Encoding combo, duplicate CL, non-digit CL, bare CR/LF in headers, whitespace before colon. Enforces 8 KB header cap, 2 MB body cap, 10 s header timeout, 30 s body timeout. Returns 408/413/501 instead of silently closing.</li>
+                <li>Prompt injection: /v1/classify and /v1/extract wrap user text in &lt;user_input nonce="..."&gt; delimiters; output validated (classify must match one of the supplied categories; extract rejects leaked wrapper).</li>
+                <li>Cancellation: switching modes mid-index now cleanly cancels the in-flight embedding job instead of leaking until done.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 17:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.7/dria-v1.7.7.dmg" sparkle:version="18" sparkle:shortVersionString="1.7.7" length="2968581" type="application/octet-stream" sparkle:edSignature="q96tWD7I7yIo1d+ljPuyka7NK5Z3zTkl758n1UM/3NLLXFjO5a+03L1yd71GsA27B5ZnYE4b+QBM3HPjH0c9DQ==" />
+        </item>
+
+        <item>
             <title>dria v1.7.6</title>
             <description><![CDATA[<ul>
                 <li>Security: LLM bridge now binds to loopback only via NWParameters.requiredInterfaceType = .loopback + acceptLocalOnly, with belt-and-braces remote-endpoint check rejecting any non-127.0.0.1/::1 connection. (Audit found acceptLocalOnly alone wasn't loopback-only on hosts with VPN/Docker bridges.)</li>
