@@ -748,17 +748,30 @@ final class AppState {
 
     // MARK: - Excel hotkey (⌘⌥E)
 
-    /// Read the currently selected Excel cell, send it to the active mode's AI,
-    /// and write the answer to the cell directly below. Replaces the unreachable
-    /// Office add-in path on Mac Excel 16.83+ where local sideload is broken.
+    /// Read the currently selected Excel cell, send it to the active mode's AI
+    /// with the **entire used range** of the sheet as context, then write the
+    /// answer to the cell directly below. The whole-sheet context makes the AI
+    /// behave like an Excel-aware assistant — it can reference other cells,
+    /// totals, headers, etc. without the user having to copy them in.
+    ///
+    /// Replaces the unreachable Office add-in path on Mac Excel 16.83+ where
+    /// local sideload is broken.
     func handleAskExcelCell() async {
         guard !isProcessing else { return }
-        // Quick guard so the hotkey is a no-op when Excel isn't focused.
         guard ExcelScript.isFrontmost() else {
             onMarqueeUpdate?("⚠️ Excel not frontmost")
             return
         }
-        guard let cellText = ExcelScript.selectedCellText(), !cellText.isEmpty else {
+
+        // Pull the rich workbook context (sheet name, dims, TSV). If the user
+        // denied Automation, this returns nil and we fall back to single-cell.
+        let book = ExcelScript.workbookContext()
+        let cellText: String
+        if let v = book?.selectionValue, !v.isEmpty {
+            cellText = v
+        } else if let v = ExcelScript.selectedCellText(), !v.isEmpty {
+            cellText = v
+        } else {
             onMarqueeUpdate?("⚠️ No cell selected (or empty)")
             return
         }
@@ -776,10 +789,36 @@ final class AppState {
             return
         }
 
-        let context = await buildKBContext(for: cellText)?.contextString ?? ""
+        // Build a single context block: KB chunks + the whole-sheet TSV.
+        var ctx = await buildKBContext(for: cellText)?.contextString ?? ""
+        if let book {
+            var sheetBlock = "\n\n=== EXCEL CONTEXT ===\n"
+            sheetBlock += "Workbook: \(book.bookName)\n"
+            sheetBlock += "Sheet: \(book.sheetName)\n"
+            sheetBlock += "Selected cell: \(book.selectionAddress)\n"
+            sheetBlock += "Used range: \(book.usedRows) rows × \(book.usedCols) cols"
+            if book.includedRows < book.usedRows || book.includedCols < book.usedCols {
+                sheetBlock += " (showing first \(book.includedRows) × \(book.includedCols))"
+            }
+            sheetBlock += "\n\n=== SHEET (TSV) ===\n"
+            sheetBlock += book.tsv
+            ctx += sheetBlock
+        }
+
+        let prompt: String
+        if let book {
+            prompt = """
+            You're answering a question that's typed inside an Excel cell at \(book.selectionAddress) on sheet "\(book.sheetName)". The full sheet is provided as TAB-separated values above. Use it as context — reference other cells, totals, headers, ranges. Reply with the answer only, no preamble. If the user is asking for a value or formula, return just that value or formula.
+
+            Question (cell \(book.selectionAddress)): \(cellText)
+            """
+        } else {
+            prompt = cellText
+        }
+
         do {
             var buffer = ""
-            for try await chunk in gemini.ask(question: cellText, context: context, history: []) {
+            for try await chunk in gemini.ask(question: prompt, context: ctx, history: []) {
                 buffer += chunk
             }
             let answer = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -791,7 +830,7 @@ final class AppState {
             if wrote {
                 onMarqueeUpdate?("✅ Wrote answer")
             } else {
-                // AppleScript failed — copy to clipboard as a fallback so the user
+                // AppleScript write failed — copy to clipboard so the user
                 // doesn't lose the answer to a permission denial.
                 clipboard.skipNextChange = true
                 NSPasteboard.general.clearContents()

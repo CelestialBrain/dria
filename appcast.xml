@@ -7,6 +7,19 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.7.9</title>
+            <description><![CDATA[<ul>
+                <li>⌘⌥E (Excel cell ask) now passes the <b>entire used range</b> of the active sheet to the AI as TSV context — like a one-shot Excel MCP. The AI can reference other cells, totals, headers, etc., not just the selected cell.</li>
+                <li>Truncates to 100 × 26 cells to stay under prompt-size limits; reports total vs. shown dimensions in the context block.</li>
+                <li>Selection address (e.g., B3) included so the AI knows where the question lives.</li>
+                <li>Prompt explicitly tells the model: "reply with the answer only, no preamble" — keeps the cell content clean.</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 19:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.7.9/dria-v1.7.9.dmg" sparkle:version="20" sparkle:shortVersionString="1.7.9" length="2982797" type="application/octet-stream" sparkle:edSignature="gkLrJNtvFbes6LOgmDSaMzMOLz76fovZm5QgyimtFbA0z0o0GI0RUNsJDZmCnBqlEUdxkxqlzVVP9ou5H9qAAA==" />
+        </item>
+
+        <item>
             <title>dria v1.7.8</title>
             <description><![CDATA[<ul>
                 <li>Excel via AppleScript: new hotkey <b>⌘⌥E</b> reads the selected Excel cell, sends it to your active mode's AI, and writes the answer to the cell directly below. Falls back to clipboard if Excel automation is denied. Bypasses the Mac Excel local-sideload restriction entirely — no Office add-in needed.</li>
