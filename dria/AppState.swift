@@ -829,6 +829,46 @@ final class AppState {
             onIconColorChange?("reset")
         }
 
+        // === Path A: agent mode (Google AI provider only for now) ===
+        // The agent lets the model iteratively call read_cell / read_range /
+        // write_cell etc. on demand instead of trusting a single TSV snapshot.
+        // True MCP-style tool use. Vertex/Claude/OpenAI fall through to one-shot.
+        if aiProvider == "googleai", let apiKey = try? keychain.getAPIKey(), !apiKey.isEmpty {
+            let agentSystem = """
+            You are an Excel assistant operating on a live workbook via a small set of tools.
+
+            Your job: answer the user's question (typed inside a cell) by calling tools to read whatever you need, then writing the final answer with write_cell.
+
+            Rules:
+            - When asked about a specific cell (e.g. "H16"), CALL read_cell to look it up. NEVER invent values.
+            - For "totals", "sums", "trends", etc., CALL read_range over the relevant block, then reason about the returned TSV (which has A1 row + column headers).
+            - When you have the answer, CALL write_cell once to place it in the cell directly below the user's selection. Use the address you get from get_selection (row+1).
+            - The value you write should be the final answer alone — no preamble, no "Cell H16 contains…", no markdown.
+            - If the answer is a formula, write it starting with "=".
+            - After write_cell succeeds, reply with a one-line confirmation. Do NOT keep calling tools.
+            """
+            let agent = ExcelAgentService(apiKey: apiKey, modelName: selectedModel, sheetName: book?.sheetName)
+            do {
+                let final = try await agent.run(
+                    systemPrompt: agentSystem,
+                    userQuestion: cellText,
+                    seedContext: book.map { "Workbook: \($0.bookName)\nSheet: \($0.sheetName)\nSelected cell: \($0.selectionAddress)\nUsed range: \($0.usedRows)×\($0.usedCols) (showing first \($0.includedRows)×\($0.includedCols)):\n\($0.tsv)" } ?? "",
+                    onTrace: { [weak self] stage in
+                        Task { @MainActor [weak self] in
+                            self?.onMarqueeUpdate?("🔄 \(stage)…")
+                        }
+                    }
+                )
+                // Agent ideally already wrote via write_cell tool. We log the
+                // confirmation text but don't overwrite the cell.
+                onMarqueeUpdate?("✅ \(final.prefix(60))")
+            } catch {
+                onMarqueeUpdate?("⚠️ Agent: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        // === Path B: one-shot fallback (Vertex/Claude/OpenAI/Ollama) ===
         guard let gemini = getOrCreateGemini() else {
             onMarqueeUpdate?("⚠️ \(errorMessage ?? "Configure AI in Settings")")
             return

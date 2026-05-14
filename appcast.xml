@@ -7,6 +7,19 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.8.0</title>
+            <description><![CDATA[<ul>
+                <li><b>Excel agent (real tool use, not a snapshot).</b> ⌘⌥E now runs an iterative agent on Google AI models: the AI can call read_cell, read_range, write_cell, get_selection, list_sheets on demand. It looks up specific cells, sums ranges, etc., then writes the final answer back. Genuine MCP-style tool-use loop, capped at 8 turns.</li>
+                <li>Falls back to the v1.7.12 one-shot path for Vertex AI / Claude / OpenAI / Ollama (those need their own tool-use wiring later).</li>
+                <li>Every agent run is logged to ~/Library/Logs/dria/excel-agent-&lt;ts&gt;.log with each tool call + result for debugging.</li>
+                <li>Marquee shows live turn-by-turn progress ("read_cell", "read_range", etc.).</li>
+            </ul>]]></description>
+            <pubDate>Mon, 11 May 2026 23:00:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.8.0/dria-v1.8.0.dmg" sparkle:version="24" sparkle:shortVersionString="1.8.0" length="3012703" type="application/octet-stream" sparkle:edSignature="VjLHeVb/dZUVEwOcnvubBKaFXKK+Gh4HxSwkWfbKoZgm2Mk1ouxA07MpvJNvn3Sx3y3YaJPHWDfDeHl7RzEUCg==" />
+        </item>
+
+        <item>
             <title>dria v1.7.12</title>
             <description><![CDATA[<ul>
                 <li>Diagnostic: every ⌘⌥E round-trip now writes a log to ~/Library/Logs/dria/excel-&lt;timestamp&gt;.log with the prompt, raw model response, and post-stripper output. Lets us diagnose "nothing happened" reports without guessing.</li>

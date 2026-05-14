@@ -102,6 +102,159 @@ enum ExcelScript {
         return result.hasPrefix("ok")
     }
 
+    /// List worksheet names in the active workbook.
+    static func listSheets() -> [String]? {
+        let script = """
+        tell application "Microsoft Excel"
+            try
+                if not (exists active workbook) then return ""
+                set acc to ""
+                set sheets_ to every worksheet of active workbook
+                repeat with i from 1 to count of sheets_
+                    if i > 1 then set acc to acc & (ASCII character 10)
+                    set acc to acc & (name of item i of sheets_)
+                end repeat
+                return acc
+            on error errMsg
+                return "err:" & errMsg
+            end try
+        end tell
+        """
+        guard let raw = runScript(script), !raw.hasPrefix("err:") else { return nil }
+        return raw.replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .filter { !$0.isEmpty }
+    }
+
+    /// Read a single cell by A1 address from the active sheet (or named sheet).
+    static func readCell(address: String, sheet: String? = nil) -> String? {
+        let escAddr = address.replacingOccurrences(of: "\"", with: "")
+        let target: String = sheet.map {
+            "worksheet \"\($0.replacingOccurrences(of: "\"", with: ""))\" of active workbook"
+        } ?? "active sheet of active workbook"
+        let script = """
+        tell application "Microsoft Excel"
+            try
+                set v to value of range "\(escAddr)" of \(target)
+                if v is missing value then return "(empty)"
+                return v as text
+            on error errMsg
+                return "err:" & errMsg
+            end try
+        end tell
+        """
+        guard let raw = runScript(script), !raw.hasPrefix("err:") else { return nil }
+        return raw
+    }
+
+    /// Read an A1 range (e.g. "B2:D10") as TSV with row/col headers.
+    static func readRange(range: String, sheet: String? = nil) -> String? {
+        let escRange = range.replacingOccurrences(of: "\"", with: "")
+        let target: String = sheet.map {
+            "worksheet \"\($0.replacingOccurrences(of: "\"", with: ""))\" of active workbook"
+        } ?? "active sheet of active workbook"
+        let script = """
+        tell application "Microsoft Excel"
+            try
+                set rng to range "\(escRange)" of \(target)
+                set vals to value of rng
+                set firstRowIx to first row index of rng
+                set firstColIx to first column index of rng
+                set rCount to count of rows of rng
+                set cCount to count of columns of rng
+
+                set tsvLines to {}
+                if rCount = 1 and cCount = 1 then
+                    set vt to ""
+                    if vals is not missing value then set vt to vals as text
+                    set end of tsvLines to vt
+                else if rCount = 1 then
+                    set rowTxt to ""
+                    repeat with j from 1 to count of vals
+                        set v to item j of vals
+                        set vt to ""
+                        if v is not missing value then set vt to v as text
+                        if j > 1 then set rowTxt to rowTxt & tab
+                        set rowTxt to rowTxt & vt
+                    end repeat
+                    set end of tsvLines to rowTxt
+                else if cCount = 1 then
+                    repeat with i from 1 to count of vals
+                        set v to item i of vals
+                        set vt to ""
+                        if v is not missing value then set vt to v as text
+                        set end of tsvLines to vt
+                    end repeat
+                else
+                    repeat with i from 1 to count of vals
+                        set rowList to item i of vals
+                        set rowTxt to ""
+                        repeat with j from 1 to count of rowList
+                            set v to item j of rowList
+                            set vt to ""
+                            if v is not missing value then set vt to v as text
+                            if j > 1 then set rowTxt to rowTxt & tab
+                            set rowTxt to rowTxt & vt
+                        end repeat
+                        set end of tsvLines to rowTxt
+                    end repeat
+                end if
+
+                set AppleScript's text item delimiters to (ASCII character 10)
+                set tsvBody to tsvLines as text
+                set AppleScript's text item delimiters to ""
+                set lf to (ASCII character 10)
+                return (firstRowIx as text) & lf & (firstColIx as text) & lf & (rCount as text) & lf & (cCount as text) & lf & "---TSV---" & lf & tsvBody
+            on error errMsg
+                return "err:" & errMsg
+            end try
+        end tell
+        """
+        guard let raw = runScript(script), !raw.hasPrefix("err:") else { return nil }
+        let normalized = raw.replacingOccurrences(of: "\r", with: "\n")
+        let parts = normalized.components(separatedBy: "\n---TSV---\n")
+        guard parts.count == 2 else { return nil }
+        let header = parts[0].components(separatedBy: "\n")
+        guard header.count >= 4,
+              let firstRow = Int(header[0]),
+              let firstCol = Int(header[1]),
+              let rows = Int(header[2]),
+              let cols = Int(header[3])
+        else { return nil }
+        let dataLines = parts[1].components(separatedBy: "\n")
+        var labeled = ""
+        for c in 0..<cols { labeled += "\t" + columnLetter(firstCol + c) }
+        labeled += "\n"
+        for (i, line) in dataLines.enumerated() where i < rows {
+            labeled += "\(firstRow + i)\t\(line)\n"
+        }
+        return labeled
+    }
+
+    /// Write a value to a specific A1 address.
+    @discardableResult
+    static func writeCell(address: String, value: String, sheet: String? = nil) -> Bool {
+        let escAddr = address.replacingOccurrences(of: "\"", with: "")
+        let escVal = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let target: String = sheet.map {
+            "worksheet \"\($0.replacingOccurrences(of: "\"", with: ""))\" of active workbook"
+        } ?? "active sheet of active workbook"
+        let script = """
+        tell application "Microsoft Excel"
+            try
+                set value of range "\(escAddr)" of \(target) to "\(escVal)"
+                return "ok"
+            on error errMsg
+                return "err:" & errMsg
+            end try
+        end tell
+        """
+        guard let raw = runScript(script) else { return false }
+        return raw.hasPrefix("ok")
+    }
+
     /// Read the workbook context: book name, active sheet, used-range
     /// dimensions, and a TSV-formatted slice of the top-left of the used
     /// range up to `maxRows × maxCols`. AppleScript on Mac Excel happily
