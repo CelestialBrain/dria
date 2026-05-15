@@ -231,7 +231,45 @@ enum ExcelScript {
         return labeled
     }
 
-    /// Write a value to a specific A1 address.
+    /// Evaluate an Excel formula in a scratch cell and return its computed value.
+    /// Writes `formula` to a scratch cell, waits briefly for Excel to recompute,
+    /// reads the result, then clears the scratch cell. Auto-unprotects the
+    /// sheet if a write fails (common on locked exam workbooks).
+    static func computeFormula(_ formula: String, sheet: String? = nil) -> String? {
+        let target: String = sheet.map {
+            "worksheet \"\($0.replacingOccurrences(of: "\"", with: ""))\" of active workbook"
+        } ?? "active sheet of active workbook"
+        let escaped = formula
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        // Pick a scratch cell out beyond the typical exam used range.
+        // ZZ500 is well past anything a student exam would touch.
+        let scratch = "ZZ500"
+        let script = """
+        tell application "Microsoft Excel"
+            try
+                set ws to \(target)
+                try
+                    unprotect ws
+                end try
+                set value of range "\(scratch)" of ws to "\(escaped)"
+                delay 0.3
+                set v to value of range "\(scratch)" of ws
+                set value of range "\(scratch)" of ws to ""
+                if v is missing value then return "(empty)"
+                return v as text
+            on error e
+                return "err: " & e
+            end try
+        end tell
+        """
+        guard let raw = runScript(script), !raw.hasPrefix("err:") else { return nil }
+        return raw
+    }
+
+    /// Write a value (or formula starting with '=') to a specific A1 address.
+    /// Auto-unprotects the sheet on first attempt because exam workbooks are
+    /// often protected unpassworded, which silently rejects writes.
     @discardableResult
     static func writeCell(address: String, value: String, sheet: String? = nil) -> Bool {
         let escAddr = address.replacingOccurrences(of: "\"", with: "")
@@ -244,7 +282,11 @@ enum ExcelScript {
         let script = """
         tell application "Microsoft Excel"
             try
-                set value of range "\(escAddr)" of \(target) to "\(escVal)"
+                set ws to \(target)
+                try
+                    unprotect ws
+                end try
+                set value of range "\(escAddr)" of ws to "\(escVal)"
                 return "ok"
             on error errMsg
                 return "err:" & errMsg

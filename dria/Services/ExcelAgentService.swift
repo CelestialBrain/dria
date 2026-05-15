@@ -166,6 +166,12 @@ final class ExcelAgentService: @unchecked Sendable {
             let ok = ExcelScript.writeCell(address: address, value: value, sheet: sheet)
             return ok ? "ok" : "error: write failed (TCC denied?)"
 
+        case "compute_formula":
+            let formula = (args["formula"] as? String) ?? ""
+            guard !formula.isEmpty else { return "error: missing 'formula'" }
+            let sheet = (args["sheet"] as? String) ?? sheetName
+            return ExcelScript.computeFormula(formula, sheet: sheet) ?? "error: compute failed"
+
         default:
             return "error: unknown tool '\(tool)'"
         }
@@ -210,7 +216,7 @@ final class ExcelAgentService: @unchecked Sendable {
         ],
         [
             "name": "write_cell",
-            "description": "Write a value (or formula starting with '=') to a specific A1 address. Use this ONLY for the final answer that resolves the user's question.",
+            "description": "Write a value (or formula starting with '=') to a specific A1 address. Use this ONLY for the final answer that resolves the user's question. Prefer formulas over computed values when the answer must remain dynamic.",
             "parameters": [
                 "type": "object",
                 "properties": [
@@ -219,6 +225,18 @@ final class ExcelAgentService: @unchecked Sendable {
                     "sheet": ["type": "string"]
                 ],
                 "required": ["address", "value"]
+            ]
+        ],
+        [
+            "name": "compute_formula",
+            "description": "Evaluate an Excel formula AS IF you typed it into a cell, and return its computed result. Use this for ALL arithmetic — sums, averages, counts, max/min, lookups, comparisons. NEVER compute math in your head; always go through this tool. The formula must start with '='. Examples: '=MAX(C13:J26)', '=AVERAGE(C13:C26)', '=INDEX(C12:J12,MATCH(MAX(K3:K10),K3:K10,0))', '=COUNTIF(C14:J14,\">0\")'.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "formula": ["type": "string", "description": "Excel formula starting with '='."],
+                    "sheet": ["type": "string", "description": "Optional sheet name."]
+                ],
+                "required": ["formula"]
             ]
         ]
     ]

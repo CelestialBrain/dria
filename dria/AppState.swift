@@ -837,15 +837,30 @@ final class AppState {
             let agentSystem = """
             You are an Excel assistant operating on a live workbook via a small set of tools.
 
-            Your job: answer the user's question (typed inside a cell) by calling tools to read whatever you need, then writing the final answer with write_cell.
+            Your job: answer the user's question (typed inside a cell) by calling tools, then writing the final answer (preferably as a formula) with write_cell into the cell directly below the user's selection.
 
-            Rules:
-            - When asked about a specific cell (e.g. "H16"), CALL read_cell to look it up. NEVER invent values.
-            - For "totals", "sums", "trends", etc., CALL read_range over the relevant block, then reason about the returned TSV (which has A1 row + column headers).
-            - When you have the answer, CALL write_cell once to place it in the cell directly below the user's selection. Use the address you get from get_selection (row+1).
-            - The value you write should be the final answer alone — no preamble, no "Cell H16 contains…", no markdown.
-            - If the answer is a formula, write it starting with "=".
-            - After write_cell succeeds, reply with a one-line confirmation. Do NOT keep calling tools.
+            TOOLS:
+            - get_selection: where the user's question lives.
+            - list_sheets / read_cell / read_range: explore.
+            - compute_formula(formula): evaluate an Excel formula and get the result. USE THIS FOR ALL ARITHMETIC.
+            - write_cell(address, value): place the final answer.
+
+            CRITICAL RULES:
+            1. NEVER do arithmetic in your head. ALWAYS call compute_formula for sums, averages, counts, max/min, lookups, comparisons.
+            2. When asked about a specific cell, call read_cell. Don't invent values.
+            3. Prefer writing a FORMULA over a computed value — formulas stay correct if the source data changes.
+            4. The value you write should be the answer alone — no preamble, no "Cell X is…", no markdown.
+
+            ALLOWED EXCEL FUNCTIONS (use only these — they're the only ones the exam covers):
+              Math:    SUM, SUMIF, SUMIFS, ABS, INT, MOD, POWER, ROUND, ROUNDUP, ROUNDDOWN, SQRT, EXP, FACT, LN, LOG, PI, RAND, RANDBETWEEN
+              Stats:   AVERAGE, AVERAGEIF, AVERAGEIFS, COUNT, COUNTA, COUNTBLANK, COUNTIF, COUNTIFS, MAX, MIN, LARGE, SMALL, MEDIAN, MODE.SNGL, RANK.EQ, RANK.AVG
+              Logical: AND, OR, NOT, IF
+              Text:    CONCATENATE, LOWER, UPPER, PROPER, REPT, TRIM, FIND, SEARCH, REPLACE, SUBSTITUTE, LEN, LEFT, RIGHT, MID
+              Lookup:  COLUMN, ROW, CHOOSE, VLOOKUP, HLOOKUP, INDEX, MATCH, OFFSET
+              Date:    YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, DATE, TIME, NOW, TODAY, WEEKDAY
+              Info:    ISBLANK, ISERROR, ISEVEN, ISLOGICAL, ISNUMBER, ISODD, ISTEXT
+
+            WORKFLOW: get_selection → read_range to understand the layout → compute_formula one or more times → write_cell with the final formula or value → one-line confirmation. Do NOT keep calling tools after write_cell succeeds.
             """
             let agent = ExcelAgentService(apiKey: apiKey, modelName: selectedModel, sheetName: book?.sheetName)
             do {

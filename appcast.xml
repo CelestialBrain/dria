@@ -7,6 +7,19 @@
         <language>en</language>
 
         <item>
+            <title>dria v1.8.1</title>
+            <description><![CDATA[<ul>
+                <li>Excel agent gains a <b>compute_formula</b> tool: the AI can now say "=AVERAGE(C13:C26)" and Excel evaluates it, returning the numeric result. Math runs in Excel, not in the LLM — fixes the arithmetic errors we saw on table-scan questions.</li>
+                <li>Auto-unprotect: writes and compute_formula now silently unprotect the sheet first. Exam workbooks are often protected without password — previously this caused silent write failures.</li>
+                <li>System prompt restricted to functions covered in Microsoft-Excel-2.pptx (SUM, AVERAGE, MAX/MIN, INDEX/MATCH/OFFSET, COUNTIF/AVERAGEIF/SUMIF, IF/AND/OR, text functions, etc.) so the agent doesn't reach for fancier stuff the exam doesn't allow.</li>
+                <li>Prompt biased toward writing formulas over computed values — keeps answers dynamic if source data changes (works correctly with RAND-driven workbooks).</li>
+            </ul>]]></description>
+            <pubDate>Wed, 14 May 2026 22:30:00 +0000</pubDate>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/CelestialBrain/dria/releases/download/v1.8.1/dria-v1.8.1.dmg" sparkle:version="25" sparkle:shortVersionString="1.8.1" length="3014169" type="application/octet-stream" sparkle:edSignature="7R4tT/T0WgZWLMY+JTaIC22H6FZ5MM0Ha/2kO6zzdGjGYtMX+rPRWH1lQ+d2Yy46T+m+GJHc6uxHebxKhaUiBw==" />
+        </item>
+
+        <item>
             <title>dria v1.8.0</title>
             <description><![CDATA[<ul>
                 <li><b>Excel agent (real tool use, not a snapshot).</b> ⌘⌥E now runs an iterative agent on Google AI models: the AI can call read_cell, read_range, write_cell, get_selection, list_sheets on demand. It looks up specific cells, sums ranges, etc., then writes the final answer back. Genuine MCP-style tool-use loop, capped at 8 turns.</li>
